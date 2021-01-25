@@ -275,3 +275,6 @@ deploy/AzureAppServices/
 *..DS_Store
 .DS_Store/*
 .DS_Store
+
+/NDependOut
+*.ndproj
