@@ -16,7 +16,7 @@ namespace Datadog.Trace.OpenTracing
         /// <param name="defaultServiceName">Default name of the service (default is the name of the executing assembly).</param>
         /// <param name="isDebugEnabled">Turns on all debug logging (this may have an impact on application performance).</param>
         /// <returns>A Datadog compatible ITracer implementation</returns>
-        public static ITracer CreateTracer(Uri agentEndpoint = null, string defaultServiceName = null, bool isDebugEnabled = false)
+        public static global::OpenTracing.ITracer CreateTracer(Uri agentEndpoint = null, string defaultServiceName = null, bool isDebugEnabled = false)
         {
             return CreateTracer(agentEndpoint, defaultServiceName, null, isDebugEnabled);
         }
@@ -26,7 +26,7 @@ namespace Datadog.Trace.OpenTracing
         /// </summary>
         /// <param name="tracer">Existing Datadog Tracer instance</param>
         /// <returns>A Datadog compatible ITracer implementation</returns>
-        public static ITracer WrapTracer(Tracer tracer)
+        public static global::OpenTracing.ITracer WrapTracer(Tracer tracer)
         {
             return new OpenTracingTracer(tracer);
         }

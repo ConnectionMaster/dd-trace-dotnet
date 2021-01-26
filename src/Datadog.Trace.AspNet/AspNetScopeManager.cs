@@ -1,15 +1,14 @@
 using System;
 using System.Web;
-using Datadog.Trace.Logging;
 
 namespace Datadog.Trace.AspNet
 {
     internal class AspNetScopeManager : ScopeManagerBase
     {
         private readonly string _name = "__Datadog_Scope_Current__" + Guid.NewGuid();
-        private readonly AsyncLocalCompat<Scope> _activeScopeFallback = new AsyncLocalCompat<Scope>();
+        private readonly AsyncLocalCompat<IScope> _activeScopeFallback = new AsyncLocalCompat<IScope>();
 
-        public override Scope Active
+        public override IScope Active
         {
             get
             {

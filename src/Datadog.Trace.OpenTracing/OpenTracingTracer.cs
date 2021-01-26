@@ -6,18 +6,18 @@ using OpenTracing.Propagation;
 
 namespace Datadog.Trace.OpenTracing
 {
-    internal class OpenTracingTracer : ITracer
+    internal class OpenTracingTracer : global::OpenTracing.ITracer
     {
         private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<OpenTracingTracer>();
 
         private readonly Dictionary<string, ICodec> _codecs;
 
-        public OpenTracingTracer(IDatadogTracer datadogTracer)
+        public OpenTracingTracer(ITracer datadogTracer)
             : this(datadogTracer, new global::OpenTracing.Util.AsyncLocalScopeManager())
         {
         }
 
-        public OpenTracingTracer(IDatadogTracer datadogTracer, global::OpenTracing.IScopeManager scopeManager)
+        public OpenTracingTracer(ITracer datadogTracer, global::OpenTracing.IScopeManager scopeManager)
         {
             DatadogTracer = datadogTracer;
             DefaultServiceName = datadogTracer.DefaultServiceName;
@@ -29,7 +29,7 @@ namespace Datadog.Trace.OpenTracing
             };
         }
 
-        public IDatadogTracer DatadogTracer { get; }
+        public ITracer DatadogTracer { get; }
 
         public string DefaultServiceName { get; }
 
@@ -37,7 +37,7 @@ namespace Datadog.Trace.OpenTracing
 
         public OpenTracingSpan ActiveSpan => (OpenTracingSpan)ScopeManager.Active?.Span;
 
-        ISpan ITracer.ActiveSpan => ScopeManager.Active?.Span;
+        ISpan global::OpenTracing.ITracer.ActiveSpan => ScopeManager.Active?.Span;
 
         public ISpanBuilder BuildSpan(string operationName)
         {

@@ -34,7 +34,13 @@ namespace Datadog.Trace.Sampling
             _windowBegin = Clock.UtcNow;
         }
 
+        // keep temporarily for backwards compatibility
         public bool Allowed(Span span)
+        {
+            return Allowed((ISpan)span);
+        }
+
+        public bool Allowed(ISpan span)
         {
             try
             {
@@ -59,7 +65,7 @@ namespace Datadog.Trace.Sampling
 
                 if (count >= _maxTracesPerInterval)
                 {
-                    Log.Debug("Dropping trace id {0} with count of {1} for last {2}ms.", span.TraceId, count, _intervalMilliseconds);
+                    Log.Debug("Dropping trace id {0} with count of {1} for last {2}ms.", span.Context.TraceId, count, _intervalMilliseconds);
                     return false;
                 }
 

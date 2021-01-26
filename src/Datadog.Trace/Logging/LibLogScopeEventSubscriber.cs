@@ -75,7 +75,7 @@ namespace Datadog.Trace.Logging
 
         public void StackOnSpanOpened(object sender, SpanEventArgs spanEventArgs)
         {
-            SetSerilogCompatibleLogContext(_defaultServiceName, _version, _env, spanEventArgs.Span.TraceId, spanEventArgs.Span.SpanId);
+            SetSerilogCompatibleLogContext(_defaultServiceName, _version, _env, spanEventArgs.Span.Context.TraceId, spanEventArgs.Span.Context.SpanId);
         }
 
         public void StackOnSpanClosed(object sender, SpanEventArgs spanEventArgs)
@@ -86,7 +86,7 @@ namespace Datadog.Trace.Logging
         public void MapOnSpanActivated(object sender, SpanEventArgs spanEventArgs)
         {
             RemoveAllCorrelationIdentifierContexts();
-            SetLogContext(_defaultServiceName, _version, _env, spanEventArgs.Span.TraceId, spanEventArgs.Span.SpanId);
+            SetLogContext(_defaultServiceName, _version, _env, spanEventArgs.Span.Context.TraceId, spanEventArgs.Span.Context.SpanId);
         }
 
         public void MapOnTraceEnded(object sender, SpanEventArgs spanEventArgs)

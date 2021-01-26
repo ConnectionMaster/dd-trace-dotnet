@@ -19,7 +19,7 @@ namespace Datadog.Trace
         private SamplingPriority? _samplingPriority;
         private bool _samplingPriorityLocked;
 
-        public TraceContext(IDatadogTracer tracer)
+        public TraceContext(ITracer tracer)
         {
             Tracer = tracer;
         }
@@ -28,7 +28,7 @@ namespace Datadog.Trace
 
         public DateTimeOffset UtcNow => _utcStart.Add(Elapsed);
 
-        public IDatadogTracer Tracer { get; }
+        public ITracer Tracer { get; }
 
         /// <summary>
         /// Gets or sets sampling priority.

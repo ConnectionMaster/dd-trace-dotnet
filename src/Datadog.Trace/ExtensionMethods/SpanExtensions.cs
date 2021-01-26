@@ -34,6 +34,16 @@ namespace Datadog.Trace.ExtensionMethods
         /// <param name="command">The db command to get tags values from.</param>
         public static void AddTagsFromDbCommand(this Span span, IDbCommand command)
         {
+            AddTagsFromDbCommand((ISpan)span, command);
+        }
+
+        /// <summary>
+        /// Adds standard tags to a span with values taken from the specified <see cref="DbCommand"/>.
+        /// </summary>
+        /// <param name="span">The span to add the tags to.</param>
+        /// <param name="command">The db command to get tags values from.</param>
+        internal static void AddTagsFromDbCommand(this ISpan span, IDbCommand command)
+        {
             span.ResourceName = command.CommandText;
             span.Type = SpanTypes.Sql;
 
@@ -46,7 +56,7 @@ namespace Datadog.Trace.ExtensionMethods
         }
 
         internal static void DecorateWebServerSpan(
-            this Span span,
+            this ISpan span,
             string resourceName,
             string method,
             string host,
@@ -67,6 +77,14 @@ namespace Datadog.Trace.ExtensionMethods
             }
         }
 
+        internal static void SetHttpStatusCode(this ISpan span, int statusCode, bool isServer)
+        {
+            string statusCodeString = ConvertStatusCodeToString(statusCode);
+            span.SetTag(Tags.HttpStatusCode, statusCodeString);
+            SetHttpErrorTag(span, statusCode, statusCodeString, isServer);
+        }
+
+        // keep temporarily for backwards compatibility
         internal static void SetHttpStatusCode(this Span span, int statusCode, bool isServer)
         {
             string statusCodeString = ConvertStatusCodeToString(statusCode);
@@ -80,6 +98,11 @@ namespace Datadog.Trace.ExtensionMethods
                 span.SetTag(Tags.HttpStatusCode, statusCodeString);
             }
 
+            SetHttpErrorTag(span, statusCode, statusCodeString, isServer);
+        }
+
+        private static void SetHttpErrorTag(ISpan span, int statusCode, string statusCodeString, bool isServer)
+        {
             // Check the customers http statuses that should be marked as errors
             if (Tracer.Instance.Settings.IsErrorStatusCode(statusCode, isServer))
             {

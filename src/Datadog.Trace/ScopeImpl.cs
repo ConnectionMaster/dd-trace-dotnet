@@ -1,5 +1,3 @@
-using Datadog.Trace.Abstractions;
-
 namespace Datadog.Trace
 {
     /// <summary>
@@ -8,12 +6,12 @@ namespace Datadog.Trace
     /// all newly created spans that are not created with the ignoreActiveSpan
     /// parameter will be automatically children of the active span.
     /// </summary>
-    public class Scope : IScope
+    public class ScopeImpl : Scope, Datadog.Trace.IScope, Datadog.Trace.Abstractions.IScope
     {
         private readonly IScopeManager _scopeManager;
         private readonly bool _finishOnClose;
 
-        internal Scope(Scope parent, Span span, IScopeManager scopeManager, bool finishOnClose)
+        internal ScopeImpl(Scope parent, Span span, IScopeManager scopeManager, bool finishOnClose)
         {
             Parent = parent;
             Span = span;
@@ -24,7 +22,7 @@ namespace Datadog.Trace
         /// <summary>
         /// Gets the active span wrapped in this scope
         /// </summary>
-        public Span Span { get; }
+        public override Span Span { get; }
 
         /// <summary>
         /// Gets the active span wrapped in this scope
@@ -32,12 +30,18 @@ namespace Datadog.Trace
         /// </summary>
         ISpan IScope.Span => Span;
 
+        /// <summary>
+        /// Gets the active span wrapped in this scope
+        /// Proxy to Span without concrete return value
+        /// </summary>
+        Abstractions.ISpan Abstractions.IScope.Span => Span;
+
         internal Scope Parent { get; }
 
         /// <summary>
         /// Closes the current scope and makes its parent scope active
         /// </summary>
-        public void Close()
+        public override void Close()
         {
             _scopeManager.Close(this);
 
@@ -50,7 +54,7 @@ namespace Datadog.Trace
         /// <summary>
         /// Closes the current scope and makes its parent scope active
         /// </summary>
-        public void Dispose()
+        public override void Dispose()
         {
             try
             {

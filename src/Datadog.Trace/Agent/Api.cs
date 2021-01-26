@@ -7,6 +7,7 @@ using Datadog.Trace.Agent.Transports;
 using Datadog.Trace.DogStatsd;
 using Datadog.Trace.Logging;
 using Datadog.Trace.PlatformHelpers;
+using Datadog.Trace.Sampling;
 using Datadog.Trace.Vendors.Newtonsoft.Json;
 using Datadog.Trace.Vendors.StatsdClient;
 
@@ -34,7 +35,13 @@ namespace Datadog.Trace.Agent
             _apiRequestFactory = apiRequestFactory ?? CreateRequestFactory();
         }
 
-        public async Task<bool> SendTracesAsync(Span[][] traces)
+        // keep temporarily for backwards compatibility
+        public Task<bool> SendTracesAsync(Span[][] traces)
+        {
+            return SendTracesAsync((ISpan[][])traces);
+        }
+
+        public async Task<bool> SendTracesAsync(ISpan[][] traces)
         {
             // retry up to 5 times with exponential back-off
             var retryLimit = 5;
@@ -141,7 +148,7 @@ namespace Datadog.Trace.Agent
 #endif
         }
 
-        private async Task<bool> SendTracesAsync(Span[][] traces, IApiRequest request, bool finalTry)
+        private async Task<bool> SendTracesAsync(ISpan[][] traces, IApiRequest request, bool finalTry)
         {
             IApiResponse response = null;
 
@@ -190,7 +197,9 @@ namespace Datadog.Trace.Agent
 
                 try
                 {
-                    if (response.ContentLength != 0 && Tracer.Instance.Sampler != null)
+                    ISampler sampler = ((ITracer)Tracer.Instance).Sampler;
+
+                    if (response.ContentLength != 0 && sampler != null)
                     {
                         var responseContent = await response.ReadAsStringAsync().ConfigureAwait(false);
 
@@ -198,7 +207,7 @@ namespace Datadog.Trace.Agent
                         {
                             var apiResponse = JsonConvert.DeserializeObject<ApiResponse>(responseContent);
 
-                            Tracer.Instance.Sampler.SetDefaultSampleRates(apiResponse?.RateByService);
+                            sampler.SetDefaultSampleRates(apiResponse?.RateByService);
 
                             _cachedResponse = responseContent;
                         }

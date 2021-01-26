@@ -4,7 +4,7 @@ namespace Datadog.Trace.Agent
 {
     internal interface IAgentWriter
     {
-        void WriteTrace(Span[] trace);
+        void WriteTrace(ISpan[] trace);
 
         Task<bool> Ping();
 

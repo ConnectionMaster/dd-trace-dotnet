@@ -34,7 +34,13 @@ namespace Datadog.Trace.Agent.Transports
             _headers.Add(name, value);
         }
 
-        public async Task<IApiResponse> PostAsync(Span[][] traces, FormatterResolverWrapper formatterResolver)
+        // keep temporarily for backwards compatibility
+        public Task<IApiResponse> PostAsync(Span[][] traces, FormatterResolverWrapper formatterResolver)
+        {
+            return PostAsync((ISpan[][])traces, formatterResolver);
+        }
+
+        public async Task<IApiResponse> PostAsync(ISpan[][] traces, FormatterResolverWrapper formatterResolver)
         {
             using (var bidirectionalStream = _streamFactory.GetBidirectionalStream())
             {

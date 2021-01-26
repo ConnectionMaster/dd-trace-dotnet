@@ -230,10 +230,8 @@ namespace Datadog.Trace.DiagnosticListeners
             return null;
         }
 
-        private static IEnumerable<KeyValuePair<string, string>> ExtractHeaderTags(HttpRequest request, IDatadogTracer tracer)
+        private static IEnumerable<KeyValuePair<string, string>> ExtractHeaderTags(HttpRequest request, TracerSettings settings)
         {
-            var settings = tracer.Settings;
-
             if (!settings.HeaderTags.IsEmpty())
             {
                 try
@@ -282,7 +280,7 @@ namespace Datadog.Trace.DiagnosticListeners
             string resourceName = $"{httpMethod} {resourceUrl}";
 
             SpanContext propagatedContext = ExtractPropagatedContext(request);
-            var tagsFromHeaders = ExtractHeaderTags(request, tracer);
+            var tagsFromHeaders = ExtractHeaderTags(request, tracer.Settings);
 
             var tags = new AspNetCoreTags();
             var scope = tracer.StartActiveWithTags(HttpRequestInOperationName, propagatedContext, tags: tags);

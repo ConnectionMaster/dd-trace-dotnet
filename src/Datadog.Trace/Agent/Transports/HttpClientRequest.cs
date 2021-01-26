@@ -22,7 +22,13 @@ namespace Datadog.Trace.Agent.Transports
             _request.Headers.Add(name, value);
         }
 
-        public async Task<IApiResponse> PostAsync(Span[][] traces, FormatterResolverWrapper formatterResolver)
+        // keep temporarily for backwards compatibility
+        public Task<IApiResponse> PostAsync(Span[][] traces, FormatterResolverWrapper formatterResolver)
+        {
+            return PostAsync((ISpan[][])traces, formatterResolver);
+        }
+
+        public async Task<IApiResponse> PostAsync(ISpan[][] traces, FormatterResolverWrapper formatterResolver)
         {
             // re-create HttpContent on every retry because some versions of HttpClient always dispose of it, so we can't reuse.
             using (var content = new TracesMessagePackContent(traces, formatterResolver))

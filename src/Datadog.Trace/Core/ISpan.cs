@@ -1,11 +1,15 @@
 using System;
 
-namespace Datadog.Trace.Abstractions
+namespace Datadog.Trace
 {
-    // keep temporarily for backwards compatibility
-    // use Datadog.Tracer.ISpan instead
     internal interface ISpan
     {
+        ISpanContext Context { get; }
+
+        string ServiceName { get; set; }
+
+        string OperationName { get; set; }
+
         string ResourceName { get; set; }
 
         string Type { get; set; }
@@ -18,6 +22,10 @@ namespace Datadog.Trace.Abstractions
         ISpan SetTag(string key, string value);
 
         string GetTag(string key);
+
+        ISpan SetMetric(string key, double? value);
+
+        double? GetMetric(string key);
 
         void SetException(Exception exception);
     }

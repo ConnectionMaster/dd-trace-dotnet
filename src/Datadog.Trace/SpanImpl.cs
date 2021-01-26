@@ -1,7 +1,6 @@
 using System;
 using System.Globalization;
 using System.Text;
-using Datadog.Trace.Abstractions;
 using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.Logging;
 using Datadog.Trace.Tagging;
@@ -15,58 +14,57 @@ namespace Datadog.Trace
     /// tracks the duration of an operation as well as associated metadata in
     /// the form of a resource name, a service name, and user defined tags.
     /// </summary>
-    public class Span : IDisposable, ISpan
+    public class SpanImpl : Span, ISpan, Abstractions.ISpan, IDisposable
     {
         private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<Span>();
         private static readonly bool IsLogLevelDebugEnabled = Log.IsEnabled(LogEventLevel.Debug);
 
-        private readonly object _lock = new object();
+        private readonly object _lock = new();
 
-        internal Span(SpanContext context, DateTimeOffset? start)
-            : this(context, start, null)
+        internal SpanImpl(SpanContext context, DateTimeOffset? start)
+            : this(context, start, tags: null)
         {
         }
 
-        internal Span(SpanContext context, DateTimeOffset? start, ITags tags)
+        internal SpanImpl(SpanContext context, DateTimeOffset? start, ITags tags)
         {
             Tags = tags ?? new CommonTags();
             Context = context;
-            ServiceName = context.ServiceName;
-            StartTime = start ?? Context.TraceContext.UtcNow;
+            StartTime = start ?? context.TraceContext.UtcNow;
 
             Log.Debug(
                 "Span started: [s_id: {0}, p_id: {1}, t_id: {2}]",
-                SpanId,
-                Context.ParentId,
-                TraceId);
+                context.SpanId,
+                context.ParentId,
+                context.TraceId);
         }
 
         /// <summary>
         /// Gets or sets operation name
         /// </summary>
-        public string OperationName { get; set; }
+        public override string OperationName { get; set; }
 
         /// <summary>
         /// Gets or sets the resource name
         /// </summary>
-        public string ResourceName { get; set; }
+        public override string ResourceName { get; set; }
 
         /// <summary>
         /// Gets or sets the type of request this span represents (ex: web, db).
         /// Not to be confused with span kind.
         /// </summary>
         /// <seealso cref="SpanTypes"/>
-        public string Type { get; set; }
+        public override string Type { get; set; }
 
         /// <summary>
         /// Gets or sets a value indicating whether this span represents an error
         /// </summary>
-        public bool Error { get; set; }
+        public override bool Error { get; set; }
 
         /// <summary>
         /// Gets or sets the service name.
         /// </summary>
-        public string ServiceName
+        public override string ServiceName
         {
             get => Context.ServiceName;
             set => Context.ServiceName = value;
@@ -75,16 +73,22 @@ namespace Datadog.Trace
         /// <summary>
         /// Gets the trace's unique identifier.
         /// </summary>
-        public ulong TraceId => Context.TraceId;
+        public override ulong TraceId => Context.TraceId;
 
         /// <summary>
         /// Gets the span's unique identifier.
         /// </summary>
-        public ulong SpanId => Context.SpanId;
+        public override ulong SpanId => Context.SpanId;
+
+        /// <summary>
+        /// Gets the span context.
+        /// </summary>
+        ISpanContext ISpan.Context => Context;
+
+        // keep temporarily for backwards compatibility
+        internal SpanContext Context { get; }
 
         internal ITags Tags { get; set; }
-
-        internal SpanContext Context { get; }
 
         internal DateTimeOffset StartTime { get; private set; }
 
@@ -241,7 +245,16 @@ namespace Datadog.Trace
         /// <param name="key">The tag's key.</param>
         /// <param name="value">The tag's value.</param>
         /// <returns>This span to allow method chaining.</returns>
-        ISpan ISpan.SetTag(string key, string value)
+        Datadog.Trace.ISpan Datadog.Trace.ISpan.SetTag(string key, string value)
+            => SetTag(key, value);
+
+        /// <summary>
+        /// Add a the specified tag to this span.
+        /// </summary>
+        /// <param name="key">The tag's key.</param>
+        /// <param name="value">The tag's value.</param>
+        /// <returns>This span to allow method chaining.</returns>
+        Datadog.Trace.Abstractions.ISpan Datadog.Trace.Abstractions.ISpan.SetTag(string key, string value)
             => SetTag(key, value);
 
         /// <summary>
@@ -312,6 +325,29 @@ namespace Datadog.Trace
             }
         }
 
+        /// <summary>
+        /// Gets the value of the specified metric.
+        /// </summary>
+        /// <param name="key">The metric name.</param>
+        /// <returns>The value of the metric, or null if not found.</returns>
+        double? ISpan.GetMetric(string key)
+        {
+            return Tags.GetMetric(key);
+        }
+
+        /// <summary>
+        /// Sets the value of the specified metric.
+        /// </summary>
+        /// <param name="key">The metric name.</param>
+        /// <param name="value">The metric's new value.</param>
+        /// <returns>This span.</returns>
+        ISpan ISpan.SetMetric(string key, double? value)
+        {
+            Tags.SetMetric(key, value);
+
+            return this;
+        }
+
         internal void Finish(TimeSpan duration)
         {
             var shouldCloseSpan = false;
@@ -349,11 +385,6 @@ namespace Datadog.Trace
                         Tags);
                 }
             }
-        }
-
-        internal double? GetMetric(string key)
-        {
-            return Tags.GetMetric(key);
         }
 
         internal Span SetMetric(string key, double? value)

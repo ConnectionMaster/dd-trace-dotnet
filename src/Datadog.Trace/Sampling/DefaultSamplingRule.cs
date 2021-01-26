@@ -17,12 +17,18 @@ namespace Datadog.Trace.Sampling
         /// </summary>
         public int Priority => int.MinValue;
 
-        public bool IsMatch(Span span)
+        public bool IsMatch(ISpan span)
         {
             return true;
         }
 
+        // keep temporarily for backwards compatibility
         public float GetSamplingRate(Span span)
+        {
+            return GetSamplingRate((ISpan)span);
+        }
+
+        public float GetSamplingRate(ISpan span)
         {
             Log.Debug("Using the default sampling logic");
 
@@ -42,7 +48,7 @@ namespace Datadog.Trace.Sampling
                 return sampleRate;
             }
 
-            Log.Debug("Could not establish sample rate for trace {0}", span.TraceId);
+            Log.Debug("Could not establish sample rate for trace {0}", span.Context.TraceId);
 
             return 1;
         }

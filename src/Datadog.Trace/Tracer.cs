@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Datadog.Trace.Agent;
 using Datadog.Trace.Configuration;
-using Datadog.Trace.DiagnosticListeners;
 using Datadog.Trace.DogStatsd;
 using Datadog.Trace.Logging;
 using Datadog.Trace.PlatformHelpers;
@@ -22,7 +21,7 @@ namespace Datadog.Trace
     /// <summary>
     /// The tracer is responsible for creating spans and flushing them to the Datadog agent
     /// </summary>
-    public class Tracer : IDatadogTracer
+    public class Tracer : IDatadogTracer, ITracer
     {
         private const string UnknownServiceName = "UnknownService";
         private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<Tracer>();
@@ -41,11 +40,12 @@ namespace Datadog.Trace
 
         private static Tracer _instance;
         private static bool _globalInstanceInitialized;
-        private static object _globalInstanceLock = new object();
+        private static object _globalInstanceLock = new();
 
         private static RuntimeMetricsWriter _runtimeMetricsWriter;
 
         private readonly IScopeManager _scopeManager;
+        private readonly ISampler _sampler;
         private readonly Timer _heartbeatTimer;
 
         private readonly IAgentWriter _agentWriter;
@@ -98,13 +98,13 @@ namespace Datadog.Trace
             _agentWriter = agentWriter ?? new AgentWriter(new Api(Settings.AgentUri, TransportStrategy.Get(Settings), Statsd), Statsd, queueSize: Settings.TraceQueueSize);
 
             _scopeManager = scopeManager ?? new AsyncLocalScopeManager();
-            Sampler = sampler ?? new RuleBasedSampler(new RateLimiter(Settings.MaxTracesSubmittedPerSecond));
+            _sampler = sampler ?? new RuleBasedSampler(new RateLimiter(Settings.MaxTracesSubmittedPerSecond));
 
             if (!string.IsNullOrWhiteSpace(Settings.CustomSamplingRules))
             {
                 foreach (var rule in CustomSamplingRule.BuildFromConfigurationString(Settings.CustomSamplingRules))
                 {
-                    Sampler.RegisterRule(rule);
+                    _sampler.RegisterRule(rule);
                 }
             }
 
@@ -118,7 +118,7 @@ namespace Datadog.Trace
                 }
                 else
                 {
-                    Sampler.RegisterRule(new GlobalSamplingRule(globalRate));
+                    _sampler.RegisterRule(new GlobalSamplingRule(globalRate));
                 }
             }
 
@@ -220,16 +220,27 @@ namespace Datadog.Trace
         /// <summary>
         /// Gets the tracer's scope manager, which determines which span is currently active, if any.
         /// </summary>
+        // keep temporarily for backwards compatibility
         IScopeManager IDatadogTracer.ScopeManager => _scopeManager;
+
+        /// <summary>
+        /// Gets the tracer's scope manager, which determines which span is currently active, if any.
+        /// </summary>
+        IScopeManager ITracer.ScopeManager => _scopeManager;
 
         /// <summary>
         /// Gets the <see cref="ISampler"/> instance used by this <see cref="IDatadogTracer"/> instance.
         /// </summary>
-        ISampler IDatadogTracer.Sampler => Sampler;
+        // keep temporarily for backwards compatibility
+        ISampler IDatadogTracer.Sampler => _sampler;
 
-        internal IDiagnosticManager DiagnosticManager { get; set; }
+        /// <summary>
+        /// Gets the <see cref="ISampler"/> instance used by this <see cref="IDatadogTracer"/> instance.
+        /// </summary>
+        ISampler ITracer.Sampler => _sampler;
 
-        internal ISampler Sampler { get; }
+        // keep temporarily for backwards compatibility
+        internal ISampler Sampler => _sampler;
 
         internal IDogStatsd Statsd { get; private set; }
 

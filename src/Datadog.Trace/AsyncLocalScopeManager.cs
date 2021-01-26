@@ -1,11 +1,8 @@
-using System;
-using Datadog.Trace.Logging;
-
 namespace Datadog.Trace
 {
     internal class AsyncLocalScopeManager : ScopeManagerBase
     {
-        private readonly AsyncLocalCompat<Scope> _activeScope = new AsyncLocalCompat<Scope>();
+        private readonly AsyncLocalCompat<Scope> _activeScope = new();
 
         public override Scope Active
         {
@@ -19,5 +16,7 @@ namespace Datadog.Trace
                 _activeScope.Set(value);
             }
         }
+
+        public override IScope ActiveScope { get; protected set; }
     }
 }

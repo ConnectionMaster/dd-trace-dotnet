@@ -12,7 +12,7 @@ namespace Datadog.Trace.Agent
     {
         private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<AgentWriter>();
 
-        private readonly AgentWriterBuffer<Span[]> _tracesBuffer;
+        private readonly AgentWriterBuffer<ISpan[]> _tracesBuffer;
         private readonly IDogStatsd _statsd;
         private readonly Task _flushTask;
         private readonly TaskCompletionSource<bool> _processExit = new TaskCompletionSource<bool>();
@@ -21,7 +21,7 @@ namespace Datadog.Trace.Agent
 
         public AgentWriter(IApi api, IDogStatsd statsd, bool automaticFlush = true, int queueSize = 1000)
         {
-            _tracesBuffer = new AgentWriterBuffer<Span[]>(queueSize);
+            _tracesBuffer = new AgentWriterBuffer<ISpan[]>(queueSize);
             _api = api;
             _statsd = statsd;
 
@@ -33,7 +33,7 @@ namespace Datadog.Trace.Agent
             return _api.SendTracesAsync(ArrayHelper.Empty<Span[]>());
         }
 
-        public void WriteTrace(Span[] trace)
+        public void WriteTrace(ISpan[] trace)
         {
             var success = _tracesBuffer.Push(trace);
 

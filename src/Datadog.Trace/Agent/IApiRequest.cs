@@ -7,6 +7,9 @@ namespace Datadog.Trace.Agent
     {
         void AddHeader(string name, string value);
 
+        // keep temporarily for backwards compatibility
         Task<IApiResponse> PostAsync(Span[][] traces, FormatterResolverWrapper formatterResolver);
+
+        Task<IApiResponse> PostAsync(ISpan[][] traces, FormatterResolverWrapper formatterResolver);
     }
 }
