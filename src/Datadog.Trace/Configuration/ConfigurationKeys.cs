@@ -1,3 +1,8 @@
+// <copyright file="ConfigurationKeys.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 namespace Datadog.Trace.Configuration
 {
     /// <summary>
@@ -92,11 +97,11 @@ namespace Datadog.Trace.Configuration
         public const string TracesPipeTimeoutMs = "DD_TRACE_PIPE_TIMEOUT_MS";
 
         /// <summary>
-        /// Configuration key for the name of the pipe where the Tracer can send metrics.
+        /// Configuration key for the named pipe that DogStatsD binds to.
         /// Default value is <c>null</c>.
         /// </summary>
         /// <seealso cref="TracerSettings.MetricsPipeName"/>
-        public const string MetricsPipeName = "DD_DOGSTATSD_WINDOWS_PIPE_NAME";
+        public const string MetricsPipeName = "DD_DOGSTATSD_PIPE_NAME";
 
         /// <summary>
         /// Sibling setting for <see cref="AgentPort"/>.
@@ -140,9 +145,14 @@ namespace Datadog.Trace.Configuration
         public const string ServiceNameMappings = "DD_TRACE_SERVICE_MAPPING";
 
         /// <summary>
-        /// Configuration key for setting the size of the trace buffer
+        /// Configuration key for setting the size in bytes of the trace buffer
         /// </summary>
-        public const string QueueSize = "DD_TRACE_QUEUE_SIZE";
+        public const string BufferSize = "DD_TRACE_BUFFER_SIZE";
+
+        /// <summary>
+        /// Configuration key for setting the batch interval in milliseconds for the serialization queue
+        /// </summary>
+        public const string SerializationBatchInterval = "DD_TRACE_BATCH_INTERVAL";
 
         /// <summary>
         /// Configuration key for enabling or disabling the automatic injection
@@ -225,6 +235,13 @@ namespace Datadog.Trace.Configuration
         public const string MaxLogFileSize = "DD_MAX_LOGFILE_SIZE";
 
         /// <summary>
+        /// Configuration key for setting the number of seconds between,
+        /// identical log messages, for Tracer log files.
+        /// Default value is 60s. Setting to 0 disables rate limiting.
+        /// </summary>
+        public const string LogRateLimit = "DD_TRACE_LOGGING_RATE";
+
+        /// <summary>
         /// Configuration key for setting the path to the .NET Tracer native log file.
         /// This also determines the output folder of the .NET Tracer managed log files.
         /// Overridden by <see cref="LogDirectory"/> if present.
@@ -279,6 +296,12 @@ namespace Datadog.Trace.Configuration
         public const string TracesTransport = "DD_TRACE_TRANSPORT";
 
         /// <summary>
+        /// Configuration key for overriding which URLs are skipped by the tracer.
+        /// </summary>
+        /// <seealso cref="TracerSettings.HttpClientExcludedUrlSubstrings"/>
+        public const string HttpClientExcludedUrlSubstrings = "DD_TRACE_HTTP_CLIENT_EXCLUDED_URL_SUBSTRINGS";
+
+        /// <summary>
         /// Configuration key for the application's server http statuses to set spans as errors by.
         /// </summary>
         /// <seealso cref="TracerSettings.HttpServerErrorStatusCodes"/>
@@ -289,6 +312,26 @@ namespace Datadog.Trace.Configuration
         /// </summary>
         /// <seealso cref="TracerSettings.HttpClientErrorStatusCodes"/>
         public const string HttpClientErrorStatusCodes = "DD_HTTP_CLIENT_ERROR_STATUSES";
+
+        /// <summary>
+        /// Configuration key to enable sending partial traces to the agent
+        /// </summary>
+        /// <seealso cref="TracerSettings.PartialFlushEnabled"/>
+        public const string PartialFlushEnabled = "DD_TRACE_PARTIAL_FLUSH_ENABLED";
+
+        /// <summary>
+        /// Configuration key to set the minimum number of closed spans in a trace before it's partially flushed
+        /// </summary>
+        /// <seealso cref="TracerSettings.PartialFlushMinSpans"/>
+        public const string PartialFlushMinSpans = "DD_TRACE_PARTIAL_FLUSH_MIN_SPANS";
+
+        /// <summary>
+        /// Configuration key to enable or disable the creation of a span context on exiting a successful Kafka
+        /// Consumer.Consume() call, and closing the scope on entering Consumer.Consume().
+        /// Default value is <c>true</c> (enabled).
+        /// </summary>
+        /// <seealso cref="TracerSettings.KafkaCreateConsumerScopeEnabled"/>
+        public const string KafkaCreateConsumerScopeEnabled = "DD_TRACE_KAFKA_CREATE_CONSUMER_SCOPE_ENABLED";
 
         /// <summary>
         /// String format patterns used to match integration-specific configuration keys.
@@ -325,6 +368,22 @@ namespace Datadog.Trace.Configuration
             /// Configuration key for forcing the automatic instrumentation to only use the fallback method lookup mechanism.
             /// </summary>
             public const string ForceFallbackLookup = "DD_TRACE_DEBUG_LOOKUP_FALLBACK";
+        }
+
+        internal static class FeatureFlags
+        {
+            /// <summary>
+            /// Feature Flag: enables updated resource names on `aspnet.request`, `aspnet-mvc.request`,
+            /// `aspnet-webapi.request`, and `aspnet_core.request` spans. Enables `aspnet_core_mvc.request` spans and
+            /// additional features on `aspnet_core.request` spans.
+            /// </summary>
+            /// <seealso cref="TracerSettings.RouteTemplateResourceNamesEnabled"/>
+            public const string RouteTemplateResourceNamesEnabled = "DD_TRACE_ROUTE_TEMPLATE_RESOURCE_NAMES_ENABLED";
+
+            /// <summary>
+            /// Feature Flag: enables instrumenting calls to netstandard.dll (only applies to CallSite instrumentation)
+            /// </summary>
+            public const string NetStandardEnabled = "DD_TRACE_NETSTANDARD_ENABLED";
         }
     }
 }

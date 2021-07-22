@@ -1,3 +1,8 @@
+// <copyright file="GlobalSamplingRule.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using Datadog.Trace.Logging;
@@ -6,7 +11,7 @@ namespace Datadog.Trace.Sampling
 {
     internal class GlobalSamplingRule : ISamplingRule
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<GlobalSamplingRule>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<GlobalSamplingRule>();
 
         private readonly float _globalRate;
 
@@ -29,7 +34,7 @@ namespace Datadog.Trace.Sampling
 
         public float GetSamplingRate(Span span)
         {
-            Log.Debug("Using the global sampling rate: {0}", _globalRate);
+            Log.Debug("Using the global sampling rate: {Rate}", _globalRate);
             span.SetMetric(Metrics.SamplingRuleDecision, _globalRate);
             return _globalRate;
         }

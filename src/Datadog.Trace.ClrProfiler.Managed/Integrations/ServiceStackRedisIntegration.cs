@@ -1,3 +1,8 @@
+// <copyright file="ServiceStackRedisIntegration.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Globalization;
 using System.Linq;
@@ -19,7 +24,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
         private const string RedisNativeClient = "ServiceStack.Redis.RedisNativeClient";
 
         private static readonly IntegrationInfo IntegrationId = IntegrationRegistry.GetIntegrationInfo(nameof(IntegrationIds.ServiceStackRedis));
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(ServiceStackRedisIntegration));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(ServiceStackRedisIntegration));
 
         /// <summary>
         /// Traces SendReceive.
@@ -83,25 +88,28 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                 throw;
             }
 
-            RedisNativeClientData clientData = redisNativeClient.As<RedisNativeClientData>();
-
-            using (var scope = RedisHelper.CreateScope(
+            if (redisNativeClient.TryDuckCast<RedisNativeClientData>(out var clientData))
+            {
+                using (var scope = RedisHelper.CreateScope(
                 Tracer.Instance,
                 IntegrationId,
                 clientData.Host ?? string.Empty,
                 clientData.Port.ToString(CultureInfo.InvariantCulture),
                 GetRawCommand(cmdWithBinaryArgs)))
-            {
-                try
                 {
-                    return instrumentedMethod(redisNativeClient, cmdWithBinaryArgs, fn, completePipelineFn, sendWithoutRead);
-                }
-                catch (Exception ex)
-                {
-                    scope?.Span?.SetException(ex);
-                    throw;
+                    try
+                    {
+                        return instrumentedMethod(redisNativeClient, cmdWithBinaryArgs, fn, completePipelineFn, sendWithoutRead);
+                    }
+                    catch (Exception ex)
+                    {
+                        scope?.Span?.SetException(ex);
+                        throw;
+                    }
                 }
             }
+
+            return instrumentedMethod(redisNativeClient, cmdWithBinaryArgs, fn, completePipelineFn, sendWithoutRead);
         }
 
         private static string GetRawCommand(byte[][] cmdWithBinaryArgs)

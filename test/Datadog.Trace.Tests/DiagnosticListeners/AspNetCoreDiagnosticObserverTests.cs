@@ -1,3 +1,8 @@
+// <copyright file="AspNetCoreDiagnosticObserverTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if !NETFRAMEWORK
 using System;
 using System.Collections.Generic;
@@ -20,7 +25,7 @@ using Xunit.Sdk;
 
 namespace Datadog.Trace.Tests.DiagnosticListeners
 {
-    [CollectionDefinition(nameof(AspNetCoreDiagnosticObserverTests), DisableParallelization = true)]
+    [Collection(nameof(TracerInstanceTestCollection))]
     [TracerRestorer]
     public class AspNetCoreDiagnosticObserverTests
     {

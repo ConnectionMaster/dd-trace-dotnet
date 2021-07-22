@@ -1,3 +1,8 @@
+// <copyright file="GraphQLTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -5,7 +10,6 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Threading;
-using Datadog.Core.Tools;
 using Datadog.Trace.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
@@ -62,11 +66,15 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             SetServiceVersion("1.0.0");
         }
 
-        [Fact]
+        [Theory]
         [Trait("Category", "EndToEnd")]
         [Trait("RunOnWindows", "True")]
-        public void SubmitsTraces()
+        [InlineData(false)]
+        [InlineData(true)]
+        public void SubmitsTraces(bool enableCallTarget)
         {
+            SetCallTargetSettings(enableCallTarget);
+
             int agentPort = TcpPortProvider.GetOpenPort();
             int aspNetCorePort = TcpPortProvider.GetOpenPort();
 
@@ -146,7 +154,14 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
 
                 if (!process.HasExited)
                 {
-                    process.Kill();
+                    // Try shutting down gracefully
+                    var shutdownRequest = new RequestInfo() { HttpMethod = "GET", Url = "/shutdown" };
+                    SubmitRequest(aspNetCorePort, shutdownRequest);
+
+                    if (!process.WaitForExit(5000))
+                    {
+                        process.Kill();
+                    }
                 }
 
                 var spans = graphQLValidateSpans.Concat(graphQLExecuteSpans).ToList();

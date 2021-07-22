@@ -1,3 +1,8 @@
+// <copyright file="TagsListTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -5,13 +10,48 @@ using System.Reflection;
 using Datadog.Trace.Agent.MessagePack;
 using Datadog.Trace.ClrProfiler.Integrations.AdoNet;
 using Datadog.Trace.Tagging;
+using Datadog.Trace.Util;
 using Datadog.Trace.Vendors.MessagePack;
+using Moq;
 using Xunit;
 
 namespace Datadog.Trace.Tests.Tagging
 {
     public class TagsListTests
     {
+        [Fact]
+        public void GetTag_GetMetric_ReturnUpdatedValues()
+        {
+            var tags = new CommonTags();
+            var span = new Span(new SpanContext(42, 41), DateTimeOffset.UtcNow, tags);
+
+            tags.Environment = "Test";
+            tags.SamplingLimitDecision = 0.5;
+
+            // Override the properties
+            span.SetTag(Tags.Env, "Overridden Environment");
+            span.SetMetric(Metrics.SamplingLimitDecision, 0.75);
+
+            for (int i = 0; i < 15; i++)
+            {
+                span.SetTag(i.ToString(), i.ToString());
+            }
+
+            for (int i = 0; i < 15; i++)
+            {
+                span.SetMetric(i.ToString(), i);
+            }
+
+            Assert.Equal("Overridden Environment", span.GetTag(Tags.Env));
+            Assert.Equal(0.75, span.GetMetric(Metrics.SamplingLimitDecision));
+
+            for (int i = 0; i < 15; i++)
+            {
+                Assert.Equal(i.ToString(), span.GetTag(i.ToString()));
+                Assert.Equal((double)i, span.GetMetric(i.ToString()));
+            }
+        }
+
         [Fact]
         public void CheckProperties()
         {
@@ -36,11 +76,26 @@ namespace Datadog.Trace.Tests.Tagging
             }
         }
 
-        [Fact]
-        public void Serialization()
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void Serialization(bool topLevelSpan)
         {
             var tags = new CommonTags();
-            var span = new Span(new SpanContext(42, 41), DateTimeOffset.UtcNow, tags);
+
+            Span span;
+
+            if (topLevelSpan)
+            {
+                span = new Span(new SpanContext(42, 41), DateTimeOffset.UtcNow, tags);
+            }
+            else
+            {
+                // Assign a parent to prevent the span from being considered as top-level
+                var traceContext = new TraceContext(Mock.Of<IDatadogTracer>());
+                var parent = new SpanContext(42, 41);
+                span = new Span(new SpanContext(parent, traceContext, null), DateTimeOffset.UtcNow, tags);
+            }
 
             // The span has 1 "common" tag and 15 additional tags (and same number of metrics)
             // Those numbers are picked to test the variable-size header of MessagePack
@@ -48,6 +103,10 @@ namespace Datadog.Trace.Tests.Tagging
             // Neither common or additional tags have enough elements, but put together they will cause to use a bigger header
             tags.Environment = "Test";
             tags.SamplingLimitDecision = 0.5;
+
+            // Override the properties
+            span.SetTag(Tags.Env, "Overridden Environment");
+            span.SetMetric(Metrics.SamplingLimitDecision, 0.75);
 
             for (int i = 0; i < 15; i++)
             {
@@ -66,16 +125,25 @@ namespace Datadog.Trace.Tests.Tagging
 
             var deserializedSpan = MessagePack.MessagePackSerializer.Deserialize<FakeSpan>(buffer);
 
-            Assert.Equal(16, deserializedSpan.Tags.Count);
-            Assert.Equal(16, deserializedSpan.Metrics.Count);
+            // For top-level spans, there is one tag added during serialization
+            Assert.Equal(topLevelSpan ? 17 : 16, deserializedSpan.Tags.Count);
 
-            Assert.Equal("Test", deserializedSpan.Tags[Tags.Env]);
-            Assert.Equal(0.5, deserializedSpan.Metrics[Metrics.SamplingLimitDecision]);
+            // For top-level spans, there is one metric added during serialization
+            Assert.Equal(topLevelSpan ? 17 : 16, deserializedSpan.Metrics.Count);
+
+            Assert.Equal("Overridden Environment", deserializedSpan.Tags[Tags.Env]);
+            Assert.Equal(0.75, deserializedSpan.Metrics[Metrics.SamplingLimitDecision]);
 
             for (int i = 0; i < 15; i++)
             {
                 Assert.Equal(i.ToString(), deserializedSpan.Tags[i.ToString()]);
                 Assert.Equal((double)i, deserializedSpan.Metrics[i.ToString()]);
+            }
+
+            if (topLevelSpan)
+            {
+                Assert.Equal(Tracer.RuntimeId, deserializedSpan.Tags[Tags.RuntimeId]);
+                Assert.Equal(1.0, deserializedSpan.Metrics[Metrics.TopLevelSpan]);
             }
         }
 

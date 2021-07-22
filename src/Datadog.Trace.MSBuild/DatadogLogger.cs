@@ -1,3 +1,8 @@
+// <copyright file="DatadogLogger.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -15,7 +20,7 @@ namespace Datadog.Trace.MSBuild
     /// </summary>
     public class DatadogLogger : INodeLogger
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(DatadogLogger));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(DatadogLogger));
 
         private Tracer _tracer = null;
         private Span _buildSpan = null;
@@ -30,7 +35,7 @@ namespace Datadog.Trace.MSBuild
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Error initializing DatadogLogger type.");
+                Log.Error(ex, "Error initializing DatadogLogger type.");
             }
         }
 
@@ -78,7 +83,7 @@ namespace Datadog.Trace.MSBuild
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Error initializing the logger.");
+                Log.Error(ex, "Error initializing the logger.");
             }
         }
 
@@ -108,14 +113,15 @@ namespace Datadog.Trace.MSBuild
                 _buildSpan.SetTag(BuildTags.BuildWorkingFolder, Environment.CurrentDirectory);
                 _buildSpan.SetTag(BuildTags.BuildStartMessage, e.Message);
 
-                _buildSpan.SetTag(CommonTags.RuntimeOSArchitecture, Environment.Is64BitOperatingSystem ? "x64" : "x86");
-                _buildSpan.SetTag(CommonTags.RuntimeProcessArchitecture, Environment.Is64BitProcess ? "x64" : "x86");
+                _buildSpan.SetTag(CommonTags.OSArchitecture, Environment.Is64BitOperatingSystem ? "x64" : "x86");
+                _buildSpan.SetTag(CommonTags.OSVersion, Environment.OSVersion.VersionString);
+                _buildSpan.SetTag(CommonTags.RuntimeArchitecture, Environment.Is64BitProcess ? "x64" : "x86");
 
                 CIEnvironmentValues.DecorateSpan(_buildSpan);
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Error in BuildStarted event");
+                Log.Error(ex, "Error in BuildStarted event");
             }
         }
 
@@ -140,7 +146,7 @@ namespace Datadog.Trace.MSBuild
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Error in BuildFinished event");
+                Log.Error(ex, "Error in BuildFinished event");
             }
         }
 
@@ -185,7 +191,7 @@ namespace Datadog.Trace.MSBuild
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Error in ProjectStarted event");
+                Log.Error(ex, "Error in ProjectStarted event");
             }
         }
 
@@ -210,7 +216,7 @@ namespace Datadog.Trace.MSBuild
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Error in ProjectFinished event");
+                Log.Error(ex, "Error in ProjectFinished event");
             }
         }
 
@@ -282,7 +288,7 @@ namespace Datadog.Trace.MSBuild
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Error in ErrorRaised event");
+                Log.Error(ex, "Error in ErrorRaised event");
             }
         }
 
@@ -329,7 +335,7 @@ namespace Datadog.Trace.MSBuild
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Error in WarningRaised event");
+                Log.Error(ex, "Error in WarningRaised event");
             }
         }
     }

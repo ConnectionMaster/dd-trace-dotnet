@@ -1,3 +1,8 @@
+// <copyright file="ClrNames.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 namespace Datadog.Trace.ClrProfiler
 {
     internal static class ClrNames
@@ -20,6 +25,10 @@ namespace Datadog.Trace.ClrProfiler
         public const string UInt32 = "System.UInt32";
         public const string UInt64 = "System.UInt64";
 
+        public const string TimeSpan = "System.TimeSpan";
+
+        public const string Stream = "System.IO.Stream";
+
         public const string Task = "System.Threading.Tasks.Task";
         public const string CancellationToken = "System.Threading.CancellationToken";
 
@@ -28,8 +37,13 @@ namespace Datadog.Trace.ClrProfiler
         public const string AsyncCallback = "System.AsyncCallback";
 
         public const string HttpRequestMessage = "System.Net.Http.HttpRequestMessage";
+        public const string HttpResponseMessage = "System.Net.Http.HttpResponseMessage";
         public const string HttpResponseMessageTask = "System.Threading.Tasks.Task`1<System.Net.Http.HttpResponseMessage>";
 
         public const string GenericTask = "System.Threading.Tasks.Task`1";
+        public const string IgnoreGenericTask = "System.Threading.Tasks.Task`1<_>";
+        public const string GenericParameterTask = "System.Threading.Tasks.Task`1<T>";
+        public const string ObjectTask = "System.Threading.Tasks.Task`1<System.Object>";
+        public const string Int32Task = "System.Threading.Tasks.Task`1<System.Int32>";
     }
 }

@@ -1,3 +1,8 @@
+// <copyright file="Program.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -39,9 +44,13 @@ namespace Datadog.Trace.Tools.Runner
             {
                 Platform = Platform.Linux;
             }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                Platform = Platform.MacOS;
+            }
             else
             {
-                Console.Error.WriteLine("The current platform is not supported. Supported platforms are: Windows and Linux.");
+                Console.Error.WriteLine("The current platform is not supported. Supported platforms are: Windows, Linux and MacOS.");
                 Environment.Exit(-1);
                 return;
             }
@@ -61,7 +70,7 @@ namespace Datadog.Trace.Tools.Runner
             });
 
             ParserResult<Options> result = parser.ParseArguments<Options>(args);
-            result.MapResult(ParsedOptions, errors => ParsedErrors(result, errors));
+            Environment.ExitCode = result.MapResult(ParsedOptions, errors => ParsedErrors(result, errors));
         }
 
         private static int ParsedOptions(Options options)
@@ -71,11 +80,19 @@ namespace Datadog.Trace.Tools.Runner
             // Start logic
 
             Dictionary<string, string> profilerEnvironmentVariables = Utils.GetProfilerEnvironmentVariables(RunnerFolder, Platform, options);
+            if (profilerEnvironmentVariables is null)
+            {
+                return 1;
+            }
 
             if (options.SetEnvironmentVariables)
             {
                 Console.WriteLine("Setting up the environment variables.");
                 CIConfiguration.SetupCIEnvironmentVariables(profilerEnvironmentVariables);
+            }
+            else if (!string.IsNullOrEmpty(options.CrankImportFile))
+            {
+                return Crank.Importer.Process(options.CrankImportFile);
             }
             else
             {
@@ -100,9 +117,11 @@ namespace Datadog.Trace.Tools.Runner
         private static int ParsedErrors(ParserResult<Options> result, IEnumerable<Error> errors)
         {
             HelpText helpText = null;
+            int exitCode = 1;
             if (errors.IsVersion())
             {
                 helpText = HelpText.AutoBuild(result);
+                exitCode = 0;
             }
             else
             {
@@ -122,7 +141,7 @@ namespace Datadog.Trace.Tools.Runner
             }
 
             Console.WriteLine(helpText);
-            return 1;
+            return exitCode;
         }
 
         private static void Console_CancelKeyPress(object sender, ConsoleCancelEventArgs e)

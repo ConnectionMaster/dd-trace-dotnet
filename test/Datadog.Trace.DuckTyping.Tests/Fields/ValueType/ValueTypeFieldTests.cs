@@ -1,3 +1,8 @@
+// <copyright file="ValueTypeFieldTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System.Collections.Generic;
 using Datadog.Trace.DuckTyping.Tests.Fields.ValueType.ProxiesDefinitions;
 using Xunit;
@@ -22,7 +27,7 @@ namespace Datadog.Trace.DuckTyping.Tests.Fields.ValueType
         {
             Assert.Throws<DuckTypeFieldIsReadonlyException>(() =>
             {
-                obscureObject.As<IObscureStaticReadonlyErrorDuckType>();
+                obscureObject.DuckCast<IObscureStaticReadonlyErrorDuckType>();
             });
         }
 
@@ -32,7 +37,7 @@ namespace Datadog.Trace.DuckTyping.Tests.Fields.ValueType
         {
             Assert.Throws<DuckTypeFieldIsReadonlyException>(() =>
             {
-                obscureObject.As<IObscureReadonlyErrorDuckType>();
+                obscureObject.DuckCast<IObscureReadonlyErrorDuckType>();
             });
         }
 
@@ -40,9 +45,9 @@ namespace Datadog.Trace.DuckTyping.Tests.Fields.ValueType
         [MemberData(nameof(Data))]
         public void StaticReadonlyFields(object obscureObject)
         {
-            var duckInterface = obscureObject.As<IObscureDuckType>();
-            var duckAbstract = obscureObject.As<ObscureDuckTypeAbstractClass>();
-            var duckVirtual = obscureObject.As<ObscureDuckTypeVirtualClass>();
+            var duckInterface = obscureObject.DuckCast<IObscureDuckType>();
+            var duckAbstract = obscureObject.DuckCast<ObscureDuckTypeAbstractClass>();
+            var duckVirtual = obscureObject.DuckCast<ObscureDuckTypeVirtualClass>();
 
             // *
             Assert.Equal(10, duckInterface.PublicStaticReadonlyValueTypeField);
@@ -69,9 +74,9 @@ namespace Datadog.Trace.DuckTyping.Tests.Fields.ValueType
         [MemberData(nameof(Data))]
         public void StaticFields(object obscureObject)
         {
-            var duckInterface = obscureObject.As<IObscureDuckType>();
-            var duckAbstract = obscureObject.As<ObscureDuckTypeAbstractClass>();
-            var duckVirtual = obscureObject.As<ObscureDuckTypeVirtualClass>();
+            var duckInterface = obscureObject.DuckCast<IObscureDuckType>();
+            var duckAbstract = obscureObject.DuckCast<ObscureDuckTypeAbstractClass>();
+            var duckVirtual = obscureObject.DuckCast<ObscureDuckTypeVirtualClass>();
 
             Assert.Equal(20, duckInterface.PublicStaticValueTypeField);
             Assert.Equal(20, duckAbstract.PublicStaticValueTypeField);
@@ -160,9 +165,9 @@ namespace Datadog.Trace.DuckTyping.Tests.Fields.ValueType
         [MemberData(nameof(Data))]
         public void ReadonlyFields(object obscureObject)
         {
-            var duckInterface = obscureObject.As<IObscureDuckType>();
-            var duckAbstract = obscureObject.As<ObscureDuckTypeAbstractClass>();
-            var duckVirtual = obscureObject.As<ObscureDuckTypeVirtualClass>();
+            var duckInterface = obscureObject.DuckCast<IObscureDuckType>();
+            var duckAbstract = obscureObject.DuckCast<ObscureDuckTypeAbstractClass>();
+            var duckVirtual = obscureObject.DuckCast<ObscureDuckTypeVirtualClass>();
 
             // *
             Assert.Equal(30, duckInterface.PublicReadonlyValueTypeField);
@@ -189,9 +194,9 @@ namespace Datadog.Trace.DuckTyping.Tests.Fields.ValueType
         [MemberData(nameof(Data))]
         public void Fields(object obscureObject)
         {
-            var duckInterface = obscureObject.As<IObscureDuckType>();
-            var duckAbstract = obscureObject.As<ObscureDuckTypeAbstractClass>();
-            var duckVirtual = obscureObject.As<ObscureDuckTypeVirtualClass>();
+            var duckInterface = obscureObject.DuckCast<IObscureDuckType>();
+            var duckAbstract = obscureObject.DuckCast<ObscureDuckTypeAbstractClass>();
+            var duckVirtual = obscureObject.DuckCast<ObscureDuckTypeVirtualClass>();
 
             Assert.Equal(40, duckInterface.PublicValueTypeField);
             Assert.Equal(40, duckAbstract.PublicValueTypeField);
@@ -280,9 +285,9 @@ namespace Datadog.Trace.DuckTyping.Tests.Fields.ValueType
         [MemberData(nameof(Data))]
         public void NullableOfKnown(object obscureObject)
         {
-            var duckInterface = obscureObject.As<IObscureDuckType>();
-            var duckAbstract = obscureObject.As<ObscureDuckTypeAbstractClass>();
-            var duckVirtual = obscureObject.As<ObscureDuckTypeVirtualClass>();
+            var duckInterface = obscureObject.DuckCast<IObscureDuckType>();
+            var duckAbstract = obscureObject.DuckCast<ObscureDuckTypeAbstractClass>();
+            var duckVirtual = obscureObject.DuckCast<ObscureDuckTypeVirtualClass>();
 
             Assert.Null(duckInterface.PublicStaticNullableIntField);
             Assert.Null(duckAbstract.PublicStaticNullableIntField);

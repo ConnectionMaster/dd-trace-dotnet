@@ -1,3 +1,8 @@
+// <copyright file="RateLimiter.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
@@ -8,7 +13,7 @@ namespace Datadog.Trace.Sampling
 {
     internal class RateLimiter : IRateLimiter
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<RateLimiter>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<RateLimiter>();
 
         private readonly ConcurrentQueue<DateTime> _intervalQueue = new ConcurrentQueue<DateTime>();
 
@@ -59,7 +64,7 @@ namespace Datadog.Trace.Sampling
 
                 if (count >= _maxTracesPerInterval)
                 {
-                    Log.Debug("Dropping trace id {0} with count of {1} for last {2}ms.", span.TraceId, count, _intervalMilliseconds);
+                    Log.Warning<ulong, int, int>("Dropping trace id {TraceId} with count of {Count} for last {Interval}ms.", span.TraceId, count, _intervalMilliseconds);
                     return false;
                 }
 

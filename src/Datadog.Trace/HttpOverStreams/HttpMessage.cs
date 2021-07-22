@@ -1,3 +1,8 @@
+// <copyright file="HttpMessage.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Text;
 using Datadog.Trace.Logging;
@@ -6,7 +11,7 @@ namespace Datadog.Trace.HttpOverStreams
 {
     internal abstract class HttpMessage
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<HttpMessage>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<HttpMessage>();
         private static readonly UTF8Encoding Utf8Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
         public HttpMessage(HttpHeaders headers, IHttpContent content)
@@ -58,7 +63,7 @@ namespace Datadog.Trace.HttpOverStreams
                 }
             }
 
-            Log.Warning("Assuming default UTF-8, Could not find an encoding for: {0}", contentType);
+            Log.Warning("Assuming default UTF-8, Could not find an encoding for: {ContentType}", contentType);
             return Utf8Encoding;
         }
     }

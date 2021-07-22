@@ -1,3 +1,8 @@
+// <copyright file="DiagnosticObserver.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if !NETFRAMEWORK
 using System;
 using System.Collections.Generic;
@@ -8,7 +13,7 @@ namespace Datadog.Trace.DiagnosticListeners
 {
     internal abstract class DiagnosticObserver : IObserver<KeyValuePair<string, object>>
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<DiagnosticObserver>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<DiagnosticObserver>();
 
         /// <summary>
         /// Gets the name of the <see cref="DiagnosticListener"/> that should be instrumented.
@@ -47,7 +52,7 @@ namespace Datadog.Trace.DiagnosticListeners
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Event Exception: {0}", value.Key);
+                Log.Error(ex, "Event Exception: {EventName}", value.Key);
 #if DEBUG
                 // In debug mode we allow exceptions to be catch in the test suite
                 throw;

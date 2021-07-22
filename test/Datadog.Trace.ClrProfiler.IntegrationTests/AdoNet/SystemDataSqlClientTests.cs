@@ -1,8 +1,13 @@
+// <copyright file="SystemDataSqlClientTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Linq;
-using Datadog.Core.Tools;
 using Datadog.Trace.Configuration;
+using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
@@ -21,9 +26,8 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests.AdoNet
         {
             foreach (object[] item in PackageVersions.SystemDataSqlClient)
             {
-                yield return item.Concat(new object[] { false, false, }).ToArray();
-                yield return item.Concat(new object[] { true, false, }).ToArray();
-                yield return item.Concat(new object[] { true, true, }).ToArray();
+                yield return item.Concat(false);
+                yield return item.Concat(true);
             }
         }
 
@@ -31,30 +35,42 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests.AdoNet
         [MemberData(nameof(GetSystemDataSqlClient))]
         [Trait("Category", "EndToEnd")]
         [Trait("RunOnWindows", "True")]
-        public void SubmitsTracesWithNetStandard(string packageVersion, bool enableCallTarget, bool enableInlining)
+        public void SubmitsTracesWithNetStandard(string packageVersion, bool enableCallTarget)
         {
-            SetCallTargetSettings(enableCallTarget, enableInlining);
+            SetCallTargetSettings(enableCallTarget);
 
-            // Note: The automatic instrumentation currently does not instrument on the generic wrappers
-            // due to an issue with constrained virtual method calls. This leads to an inconsistency where
-            // the .NET Core apps generate 4 more spans than .NET Framework apps (2 ExecuteReader calls *
-            // 2 interfaces: IDbCommand and IDbCommand-netstandard).
-            // Once this is fully supported, this will add another 2 complete groups for all frameworks instead
-            // of 4 extra spans on net461 and netcoreapp2.0+
+            // ALWAYS: 98 spans
+            // - SqlCommand: 21 spans (3 groups * 7 spans)
+            // - DbCommand:  42 spans (6 groups * 7 spans)
+            // - IDbCommand: 14 spans (2 groups * 7 spans)
+            // - SqlCommandVb: 21 spans (3 groups * 7 spans)
+            //
+            // NETSTANDARD: +56 spans
+            // - DbCommand-netstandard:  42 spans (6 groups * 7 spans)
+            // - IDbCommand-netstandard: 14 spans (2 groups * 7 spans)
+            //
+            // CALLSITE + NETSTANDARD + NETCORE: +4 spans
+            // - IDbCommandGenericConstrant<SqlCommand>: 4 spans (2 group * 2 spans)
+            //
+            // CALLTARGET: +7 spans
+            // - IDbCommandGenericConstrant<SqlCommand>: 7 spans (1 group * 7 spans)
+            //
+            // NETSTANDARD + CALLTARGET: +7 spans
+            // - IDbCommandGenericConstrant<SqlCommand>-netstandard: 7 spans (1 group * 7 spans)
 #if NET452
-            var expectedSpanCount = 70; // 7 queries * 10 groups
+            var expectedSpanCount = 98;
 #elif NET461
-            var expectedSpanCount = 98; // 7 queries * 14 groups
+            var expectedSpanCount = 154;
 #else
-            var expectedSpanCount = 102; // 7 queries * 14 groups + 4 spans from generic wrapper on .NET Core
+            var expectedSpanCount = 158;
 #endif
 
             if (enableCallTarget)
             {
 #if NET452
-                expectedSpanCount = 77; // CallTarget support instrumenting a constrained generic caller.
+                expectedSpanCount = 105;
 #else
-                expectedSpanCount = 112; // CallTarget support instrumenting a constrained generic caller.
+                expectedSpanCount = 168;
 #endif
             }
 
@@ -87,14 +103,13 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests.AdoNet
         }
 
         [Theory]
-        [InlineData(false, false)]
-        [InlineData(true, false)]
-        [InlineData(true, true)]
+        [InlineData(false)]
+        [InlineData(true)]
         [Trait("Category", "EndToEnd")]
         [Trait("RunOnWindows", "True")]
-        public void SpansDisabledByAdoNetExcludedTypes(bool enableCallTarget, bool enableInlining)
+        public void SpansDisabledByAdoNetExcludedTypes(bool enableCallTarget)
         {
-            SetCallTargetSettings(enableCallTarget, enableInlining);
+            SetCallTargetSettings(enableCallTarget);
 
             var totalSpanCount = 21;
 

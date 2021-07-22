@@ -1,3 +1,8 @@
+// <copyright file="DatadogExporter.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -21,7 +26,7 @@ namespace Datadog.Trace.BenchmarkDotNet
         /// </summary>
         public static readonly IExporter Default = new DatadogExporter();
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(DatadogExporter));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(DatadogExporter));
 
         static DatadogExporter()
         {
@@ -52,7 +57,6 @@ namespace Datadog.Trace.BenchmarkDotNet
                     Span span = tracer.StartSpan("benchmarkdotnet.test", startTime: startTime);
                     double durationNanoseconds = 0;
 
-                    span.SetMetric(Tags.Analytics, 1.0d);
                     span.SetTraceSamplingPriority(SamplingPriority.AutoKeep);
                     span.Type = SpanTypes.Test;
                     span.ResourceName = $"{report.BenchmarkCase.Descriptor.Type.FullName}.{report.BenchmarkCase.Descriptor.WorkloadMethod.Name}";

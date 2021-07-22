@@ -1,3 +1,8 @@
+// <copyright file="PerformanceCounterWrapper.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if NETFRAMEWORK
 using System;
 using System.Diagnostics;
@@ -8,7 +13,7 @@ namespace Datadog.Trace.RuntimeMetrics
 {
     internal class PerformanceCounterWrapper : IDisposable
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<PerformanceCounterWrapper>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<PerformanceCounterWrapper>();
 
         private readonly string _categoryName;
         private readonly string _counterName;
@@ -60,7 +65,7 @@ namespace Datadog.Trace.RuntimeMetrics
             }
             catch (Exception ex)
             {
-                Log.Information(ex, "Error while renewing counter");
+                Log.Warning(ex, "Error while renewing counter");
             }
         }
     }

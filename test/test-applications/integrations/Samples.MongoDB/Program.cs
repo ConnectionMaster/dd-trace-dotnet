@@ -4,7 +4,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Datadog.Trace;
-using Datadog.Trace.ClrProfiler;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using MongoDB.Driver.Core.Clusters;
@@ -21,7 +20,24 @@ namespace Samples.MongoDB
 
         public static void Main(string[] args)
         {
-            Console.WriteLine($"Profiler attached: {Instrumentation.ProfilerAttached}");
+            bool IsProfilerAttached()
+            {
+                var instrumentationType = Type.GetType("Datadog.Trace.ClrProfiler.Instrumentation", throwOnError: false);
+
+                if (instrumentationType == null)
+                {
+                    return false;
+                }
+
+                var property = instrumentationType.GetProperty("ProfilerAttached");
+
+                var isAttached = property?.GetValue(null) as bool?;
+
+                return isAttached ?? false;
+            }
+
+
+            Console.WriteLine($"Profiler attached: {IsProfilerAttached()}");
             Console.WriteLine($"Platform: {(Environment.Is64BitProcess ? "x64" : "x32")}");
 
             var newDocument = new BsonDocument
@@ -81,7 +97,9 @@ namespace Samples.MongoDB
                 // https://stackoverflow.com/questions/49506857/how-do-i-run-an-explain-query-with-the-2-4-c-sharp-mongo-driver
                 var options = new FindOptions
                 {
+#pragma warning disable 0618 // 'FindOptionsBase.Modifiers' is obsolete: 'Use individual properties instead.'
                     Modifiers = new BsonDocument("$explain", true)
+#pragma warning restore 0618
                 };
                 // Without properly unboxing generic arguments whose instantiations
                 // are valuetypes, the following line will fail with
@@ -126,6 +144,13 @@ namespace Samples.MongoDB
                 var server = client.Cluster.SelectServer(new ServerSelector(), CancellationToken.None);
                 var channel = server.GetChannel(CancellationToken.None);
                 channel.KillCursors(new long[] { 0, 1, 2 }, new global::MongoDB.Driver.Core.WireProtocol.Messages.Encoders.MessageEncoderSettings(), CancellationToken.None);
+            }
+
+            using (var asyncScope = Tracer.Instance.StartActive("async-calls-execute", serviceName: "Samples.MongoDB"))
+            {
+                var server = client.Cluster.SelectServer(new ServerSelector(), CancellationToken.None);
+                var channel = server.GetChannel(CancellationToken.None);
+                channel.KillCursorsAsync(new long[] { 0, 1, 2 }, new global::MongoDB.Driver.Core.WireProtocol.Messages.Encoders.MessageEncoderSettings(), CancellationToken.None).Wait();
             }
         }
 

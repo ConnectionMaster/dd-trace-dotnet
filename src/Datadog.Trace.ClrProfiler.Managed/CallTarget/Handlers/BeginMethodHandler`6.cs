@@ -1,3 +1,8 @@
+// <copyright file="BeginMethodHandler`6.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
@@ -37,7 +42,7 @@ namespace Datadog.Trace.ClrProfiler.CallTarget.Handlers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static CallTargetState Invoke(TTarget instance, TArg1 arg1, TArg2 arg2, TArg3 arg3, TArg4 arg4, TArg5 arg5, TArg6 arg6)
         {
-            return CallTargetState.WithPreviousScope(Tracer.Instance.ActiveScope, _invokeDelegate(instance, arg1, arg2, arg3, arg4, arg5, arg6));
+            return new CallTargetState(Tracer.Instance.ActiveScope, _invokeDelegate(instance, arg1, arg2, arg3, arg4, arg5, arg6));
         }
     }
 }

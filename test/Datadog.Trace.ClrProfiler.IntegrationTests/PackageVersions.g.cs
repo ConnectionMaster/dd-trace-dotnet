@@ -25,6 +25,8 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
         public static readonly bool IsComprehensive = false;
 #endif
 
+        public static IEnumerable<object[]> AwsSqs => IsComprehensive ? PackageVersionsComprehensive.AwsSqs : PackageVersionsLatestMinors.AwsSqs;
+
         public static IEnumerable<object[]> MongoDB => IsComprehensive ? PackageVersionsComprehensive.MongoDB : PackageVersionsLatestMinors.MongoDB;
 
         public static IEnumerable<object[]> ElasticSearch6 => IsComprehensive ? PackageVersionsComprehensive.ElasticSearch6 : PackageVersionsLatestMinors.ElasticSearch6;
@@ -42,5 +44,19 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
         public static IEnumerable<object[]> StackExchangeRedis => IsComprehensive ? PackageVersionsComprehensive.StackExchangeRedis : PackageVersionsLatestMinors.StackExchangeRedis;
 
         public static IEnumerable<object[]> ServiceStackRedis => IsComprehensive ? PackageVersionsComprehensive.ServiceStackRedis : PackageVersionsLatestMinors.ServiceStackRedis;
+
+        public static IEnumerable<object[]> MySqlData => IsComprehensive ? PackageVersionsComprehensive.MySqlData : PackageVersionsLatestMinors.MySqlData;
+
+        public static IEnumerable<object[]> MicrosoftDataSqlite => IsComprehensive ? PackageVersionsComprehensive.MicrosoftDataSqlite : PackageVersionsLatestMinors.MicrosoftDataSqlite;
+
+        public static IEnumerable<object[]> XUnit => IsComprehensive ? PackageVersionsComprehensive.XUnit : PackageVersionsLatestMinors.XUnit;
+
+        public static IEnumerable<object[]> NUnit => IsComprehensive ? PackageVersionsComprehensive.NUnit : PackageVersionsLatestMinors.NUnit;
+
+        public static IEnumerable<object[]> MSTest => IsComprehensive ? PackageVersionsComprehensive.MSTest : PackageVersionsLatestMinors.MSTest;
+
+        public static IEnumerable<object[]> Kafka => IsComprehensive ? PackageVersionsComprehensive.Kafka : PackageVersionsLatestMinors.Kafka;
+
+        public static IEnumerable<object[]> CosmosDb => IsComprehensive ? PackageVersionsComprehensive.CosmosDb : PackageVersionsLatestMinors.CosmosDb;
     }
 }

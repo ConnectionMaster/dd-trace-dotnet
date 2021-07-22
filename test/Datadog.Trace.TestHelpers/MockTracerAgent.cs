@@ -1,3 +1,8 @@
+// <copyright file="MockTracerAgent.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -9,7 +14,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-using Datadog.Core.Tools;
 using Datadog.Trace.ExtensionMethods;
 using MessagePack;
 
@@ -263,8 +267,12 @@ namespace Datadog.Trace.TestHelpers
                         }
                     }
 
+                    // NOTE: HttpStreamRequest doesn't support Transfer-Encoding: Chunked
+                    // (Setting content-length avoids that)
+
                     ctx.Response.ContentType = "application/json";
                     var buffer = Encoding.UTF8.GetBytes("{}");
+                    ctx.Response.ContentLength64 = buffer.LongLength;
                     ctx.Response.OutputStream.Write(buffer, 0, buffer.Length);
                     ctx.Response.Close();
                 }
@@ -277,6 +285,11 @@ namespace Datadog.Trace.TestHelpers
                 {
                     // the response has been already disposed.
                 }
+                catch (InvalidOperationException)
+                {
+                    // this can occur when setting Response.ContentLength64, with the framework claiming that the response has already been submitted
+                    // for now ignore, and we'll see if this introduces downstream issues
+                }
                 catch (Exception) when (!_listener.IsListening)
                 {
                     // we don't care about any exception when listener is stopped
@@ -286,7 +299,7 @@ namespace Datadog.Trace.TestHelpers
 
         [MessagePackObject]
         [DebuggerDisplay("TraceId={TraceId}, SpanId={SpanId}, Service={Service}, Name={Name}, Resource={Resource}")]
-        public struct Span
+        public class Span
         {
             [Key("trace_id")]
             public ulong TraceId { get; set; }
@@ -323,6 +336,18 @@ namespace Datadog.Trace.TestHelpers
 
             [Key("metrics")]
             public Dictionary<string, double> Metrics { get; set; }
+
+            public Span WithTag(string key, string value)
+            {
+                Tags[key] = value;
+                return this;
+            }
+
+            public Span WithMetric(string key, double value)
+            {
+                Metrics[key] = value;
+                return this;
+            }
 
             public override string ToString()
             {

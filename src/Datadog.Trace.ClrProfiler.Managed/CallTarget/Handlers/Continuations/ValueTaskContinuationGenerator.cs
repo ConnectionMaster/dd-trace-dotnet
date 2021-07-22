@@ -1,3 +1,8 @@
+// <copyright file="ValueTaskContinuationGenerator.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Reflection.Emit;
 using System.Threading.Tasks;
@@ -43,11 +48,32 @@ namespace Datadog.Trace.ClrProfiler.CallTarget.Handlers.Continuations
                 }
                 catch (Exception ex)
                 {
-                    _continuation(instance, default, ex, state);
+                    try
+                    {
+                        // *
+                        // Calls the CallTarget integration continuation, exceptions here should never bubble up to the application
+                        // *
+                        _continuation(instance, default, ex, state);
+                    }
+                    catch (Exception contEx)
+                    {
+                        IntegrationOptions<TIntegration, TTarget>.LogException(contEx, "Exception occurred when calling the CallTarget integration continuation.");
+                    }
+
                     throw;
                 }
 
-                _continuation(instance, default, default, state);
+                try
+                {
+                    // *
+                    // Calls the CallTarget integration continuation, exceptions here should never bubble up to the application
+                    // *
+                    _continuation(instance, default, default, state);
+                }
+                catch (Exception contEx)
+                {
+                    IntegrationOptions<TIntegration, TTarget>.LogException(contEx, "Exception occurred when calling the CallTarget integration continuation.");
+                }
             }
         }
     }

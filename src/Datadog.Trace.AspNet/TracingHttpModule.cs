@@ -1,10 +1,15 @@
+// <copyright file="TracingHttpModule.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Web;
 using Datadog.Trace.Configuration;
 using Datadog.Trace.ExtensionMethods;
+using Datadog.Trace.Headers;
 using Datadog.Trace.Logging;
 using Datadog.Trace.Tagging;
 using Datadog.Trace.Util;
@@ -18,15 +23,10 @@ namespace Datadog.Trace.AspNet
     {
         internal static readonly IntegrationInfo IntegrationId = IntegrationRegistry.GetIntegrationInfo(nameof(IntegrationIds.AspNet));
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(TracingHttpModule));
-
-        // there is no ConcurrentHashSet, so use a ConcurrentDictionary
-        // where we only care about the key, not the value
-        private static ConcurrentDictionary<HttpApplication, byte> registeredEventHandlers = new ConcurrentDictionary<HttpApplication, byte>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(TracingHttpModule));
 
         private readonly string _httpContextScopeKey;
         private readonly string _requestOperationName;
-        private HttpApplication _httpApplication;
 
         /// <summary>
         ///     Initializes a new instance of the <see cref="TracingHttpModule" /> class.
@@ -50,34 +50,14 @@ namespace Datadog.Trace.AspNet
         /// <inheritdoc />
         public void Init(HttpApplication httpApplication)
         {
-            // Intent: The first HttpModule to run Init for this HttpApplication will register for events
-            // Actual: Each HttpApplication that comes through here is potentially a new .NET object, even
-            //         if it refers to the same web application. Based on my reading, it appears that initialization
-            //         is done for several types of resources. Read more in this SO article -- look at Sunday Ironfoot's
-            //         (yes, reliable sounding name of course) response toward the end of this article:
-            //         https://stackoverflow.com/a/2416546/24231.
-            //         I've discovered that not letting each of these unique application objects be added, and thus
-            //         the event handlers be registered within each HttpApplication object, leads to the runtime
-            //         weirdness: at one point it crashed consistently for me, and later, I saw no spans at all.
-            if (registeredEventHandlers.TryAdd(httpApplication, 1))
-            {
-                _httpApplication = httpApplication;
-                httpApplication.BeginRequest += OnBeginRequest;
-                httpApplication.EndRequest += OnEndRequest;
-                httpApplication.Error += OnError;
-            }
+            httpApplication.BeginRequest += OnBeginRequest;
+            httpApplication.EndRequest += OnEndRequest;
+            httpApplication.Error += OnError;
         }
 
         /// <inheritdoc />
         public void Dispose()
         {
-            // defend against multiple calls to Dispose()
-            if (_httpApplication != null)
-            {
-                // Remove the HttpApplication mapping so we don't keep the object alive
-                registeredEventHandlers.TryRemove(_httpApplication, out var _);
-                _httpApplication = null;
-            }
         }
 
         private void OnBeginRequest(object sender, EventArgs eventArgs)
@@ -101,6 +81,13 @@ namespace Datadog.Trace.AspNet
                     return;
                 }
 
+                // Make sure the request wasn't already handled by another TracingHttpModule,
+                // in case they're registered multiple times
+                if (httpContext.Items.Contains(_httpContextScopeKey))
+                {
+                    return;
+                }
+
                 HttpRequest httpRequest = httpContext.Request;
                 SpanContext propagatedContext = null;
                 var tagsFromHeaders = Enumerable.Empty<KeyValuePair<string, string>>();
@@ -112,7 +99,7 @@ namespace Datadog.Trace.AspNet
                         // extract propagated http headers
                         var headers = httpRequest.Headers.Wrap();
                         propagatedContext = SpanContextPropagator.Instance.Extract(headers);
-                        tagsFromHeaders = SpanContextPropagator.Instance.ExtractHeaderTags(headers, tracer.Settings.HeaderTags);
+                        tagsFromHeaders = SpanContextPropagator.Instance.ExtractHeaderTags(headers, tracer.Settings.HeaderTags, defaultTagPrefix: SpanContextPropagator.HttpRequestHeadersTagPrefix);
                     }
                     catch (Exception ex)
                     {
@@ -123,21 +110,23 @@ namespace Datadog.Trace.AspNet
                 string host = httpRequest.Headers.Get("Host");
                 string httpMethod = httpRequest.HttpMethod.ToUpperInvariant();
                 string url = httpRequest.RawUrl.ToLowerInvariant();
-                string path = UriHelpers.GetRelativeUrl(httpRequest.Url, tryRemoveIds: true);
-                string resourceName = $"{httpMethod} {path.ToLowerInvariant()}";
 
                 var tags = new WebTags();
                 scope = tracer.StartActiveWithTags(_requestOperationName, propagatedContext, tags: tags);
-                scope.Span.DecorateWebServerSpan(resourceName, httpMethod, host, url, tags, tagsFromHeaders);
+                // Leave resourceName blank for now - we'll update it in OnEndRequest
+                scope.Span.DecorateWebServerSpan(resourceName: null, httpMethod, host, url, tags, tagsFromHeaders);
 
                 tags.SetAnalyticsSampleRate(IntegrationId, tracer.Settings, enabledWithGlobalSetting: true);
-
-                httpContext.Items[_httpContextScopeKey] = scope;
 
                 // Decorate the incoming HTTP Request with distributed tracing headers
                 // in case the next processor cannot access the stored Scope
                 // (e.g. WCF being hosted in IIS)
-                SpanContextPropagator.Instance.Inject(scope.Span.Context, httpRequest.Headers.Wrap());
+                if (HttpRuntime.UsingIntegratedPipeline)
+                {
+                    SpanContextPropagator.Instance.Inject(scope.Span.Context, httpRequest.Headers.Wrap());
+                }
+
+                httpContext.Items[_httpContextScopeKey] = scope;
             }
             catch (Exception ex)
             {
@@ -160,8 +149,33 @@ namespace Datadog.Trace.AspNet
                 if (sender is HttpApplication app &&
                     app.Context.Items[_httpContextScopeKey] is Scope scope)
                 {
-                    scope.Span.SetHttpStatusCode(app.Context.Response.StatusCode, isServer: true);
-                    scope.Dispose();
+                    try
+                    {
+                        if (HttpRuntime.UsingIntegratedPipeline)
+                        {
+                            scope.Span.SetHeaderTags<IHeadersCollection>(app.Context.Response.Headers.Wrap(), Tracer.Instance.Settings.HeaderTags, defaultTagPrefix: SpanContextPropagator.HttpResponseHeadersTagPrefix);
+                        }
+
+                        scope.Span.SetHttpStatusCode(app.Context.Response.StatusCode, isServer: true);
+
+                        if (app.Context.Items[SharedConstants.HttpContextPropagatedResourceNameKey] is string resourceName
+                            && !string.IsNullOrEmpty(resourceName))
+                        {
+                            scope.Span.ResourceName = resourceName;
+                        }
+                        else
+                        {
+                            string path = UriHelpers.GetCleanUriPath(app.Request.Url);
+                            scope.Span.ResourceName = $"{app.Request.HttpMethod.ToUpperInvariant()} {path.ToLowerInvariant()}";
+                        }
+
+                        scope.Dispose();
+                    }
+                    finally
+                    {
+                        // Clear the context to make sure another TracingHttpModule doesn't try to close the same scope
+                        TryClearContext(app.Context);
+                    }
                 }
             }
             catch (Exception ex)
@@ -181,14 +195,34 @@ namespace Datadog.Trace.AspNet
                 var httpException = exception as HttpException;
                 var is404 = httpException?.GetHttpCode() == 404;
 
-                if (exception != null && !is404 && httpContext.Items[_httpContextScopeKey] is Scope scope)
+                if (httpContext.Items[_httpContextScopeKey] is Scope scope)
                 {
-                    scope.Span.SetException(exception);
+                    if (HttpRuntime.UsingIntegratedPipeline)
+                    {
+                        scope.Span.SetHeaderTags<IHeadersCollection>(httpContext.Response.Headers.Wrap(), Tracer.Instance.Settings.HeaderTags, defaultTagPrefix: SpanContextPropagator.HttpResponseHeadersTagPrefix);
+                    }
+
+                    if (exception != null && !is404)
+                    {
+                        scope.Span.SetException(exception);
+                    }
                 }
             }
             catch (Exception ex)
             {
                 Log.Error(ex, "Datadog ASP.NET HttpModule instrumentation error");
+            }
+        }
+
+        private void TryClearContext(HttpContext context)
+        {
+            try
+            {
+                context.Items.Remove(_httpContextScopeKey);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error while clearing the HttpContext");
             }
         }
     }

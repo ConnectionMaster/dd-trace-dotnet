@@ -16,10 +16,12 @@ TEST_F(CLRHelperTest, EnumeratesTypeDefs) {
       L"Samples.ExampleLibrary.GenericTests.StructContainer`1",
       L"Samples.ExampleLibrary.FakeClient.Biscuit`1",
       L"Samples.ExampleLibrary.FakeClient.Biscuit",
+      L"Samples.ExampleLibrary.FakeClient.StructBiscuit",
       L"Samples.ExampleLibrary.FakeClient.DogClient`2",
       L"Samples.ExampleLibrary.FakeClient.DogTrick`1",
       L"Samples.ExampleLibrary.FakeClient.DogTrick",
       L"<>c",
+      L"Cookie",
       L"Cookie",
       L"<StayAndLayDown>d__4`2",
       L"Raisin"};
@@ -82,7 +84,7 @@ TEST_F(CLRHelperTest, FiltersEnabledIntegrations) {
       {{{}, {L"System.Runtime", L"", L"", L"ReplaceTargetMethod", min_ver_, max_ver_, {}, empty_sig_type_}, {}}}};
   std::vector<Integration> all = {i1, i2, i3};
   std::vector<Integration> expected = {i1, i3};
-  std::vector<WSTRING> disabled_integrations = {"integration-2"_W};
+  std::vector<WSTRING> disabled_integrations = {WStr("integration-2")};
   auto actual = FilterIntegrationsByName(all, disabled_integrations);
   EXPECT_EQ(actual, expected);
 }
@@ -210,6 +212,7 @@ TEST_F(CLRHelperTest, GetsTypeInfoFromTypeDefs) {
       L"Samples.ExampleLibrary.FakeClient.DogClient`2",
       L"Samples.ExampleLibrary.FakeClient.DogTrick",
       L"Samples.ExampleLibrary.FakeClient.DogTrick`1",
+      L"Samples.ExampleLibrary.FakeClient.StructBiscuit",
       L"Samples.ExampleLibrary.GenericTests.ComprehensiveCaller`2",
       L"Samples.ExampleLibrary.GenericTests.GenericTarget`2",
       L"Samples.ExampleLibrary.GenericTests.PointStruct",
@@ -234,10 +237,14 @@ TEST_F(CLRHelperTest, GetsTypeInfoFromTypeRefs) {
       L"System.Collections.Generic.IList`1",
       L"System.Collections.Generic.List`1",
       L"System.Diagnostics.DebuggableAttribute",
+#ifdef _DEBUG
       L"System.Diagnostics.DebuggerBrowsableAttribute",
       L"System.Diagnostics.DebuggerBrowsableState",
+#endif
       L"System.Diagnostics.DebuggerHiddenAttribute",
+#ifdef _DEBUG
       L"System.Diagnostics.DebuggerStepThroughAttribute",
+#endif
       L"System.Exception",
       L"System.Func`3",
       L"System.Guid",
@@ -299,6 +306,7 @@ TEST_F(CLRHelperTest, GetsTypeInfoFromMethods) {
       L"Samples.ExampleLibrary.FakeClient.DogClient`2",
       L"Samples.ExampleLibrary.FakeClient.DogTrick",
       L"Samples.ExampleLibrary.FakeClient.DogTrick`1",
+      L"Samples.ExampleLibrary.FakeClient.StructBiscuit",
       L"Samples.ExampleLibrary.GenericTests.ComprehensiveCaller`2",
       L"Samples.ExampleLibrary.GenericTests.GenericTarget`2",
       L"Samples.ExampleLibrary.GenericTests.PointStruct",
@@ -352,10 +360,12 @@ TEST_F(CLRHelperTest,
       if (type_info.IsValid() &&
           type_info.name == L"Samples.ExampleLibrary.Class1") {
         mdToken type_token = mdTokenNil;
+        AssemblyProperty asm_prop{};
         auto target = GetFunctionInfo(metadata_import_, method_def);
         bool result = ReturnTypeIsValueTypeOrGeneric(metadata_import_,
                                                      metadata_emit_,
                                                      assembly_emit_,
+                                                     asm_prop,
                                                      target.id,
                                                      target.signature,
                                                      &type_token) &&
@@ -394,9 +404,11 @@ TEST_F(CLRHelperTest,
     auto target = GetFunctionInfo(metadata_import_, current);
     if (target.name == L"ReturnT1" || target.name == L"ReturnT2") {
       mdToken type_token = mdTokenNil;
+      AssemblyProperty asm_prop{};
       bool result = ReturnTypeIsValueTypeOrGeneric(metadata_import_,
                                                   metadata_emit_,
                                                   assembly_emit_,
+                                                  asm_prop,
                                                   target.id,
                                                   target.signature,
                                                   &type_token) &&
@@ -427,11 +439,13 @@ TEST_F(CLRHelperTest,
 
   for (mdMethodSpec current = mdtMethodSpec + 1; metadata_import_->IsValidToken(current); current++) {
     mdToken type_token = mdTokenNil;
+    AssemblyProperty asm_prop{};
     auto target = GetFunctionInfo(metadata_import_, current);
     if (target.name.find(L"ReturnM") != std::string::npos) {
       bool result = ReturnTypeIsValueTypeOrGeneric(metadata_import_,
                                                    metadata_emit_,
                                                    assembly_emit_,
+                                                   asm_prop,
                                                    target.id,
                                                    target.signature,
                                                    &type_token) &&
@@ -440,4 +454,54 @@ TEST_F(CLRHelperTest,
     }
   }
   EXPECT_EQ(actual, expected);
+}
+
+TEST_F(CLRHelperTest, FindTypeDefsByName) {
+  std::vector<std::wstring> expected_types = {
+      L"Samples.ExampleLibrary.Class1",
+      L"Samples.ExampleLibrary.GenericTests.ComprehensiveCaller`2",
+      L"Samples.ExampleLibrary.GenericTests.GenericTarget`2",
+      L"Samples.ExampleLibrary.GenericTests.PointStruct",
+      L"Samples.ExampleLibrary.GenericTests.StructContainer`1",
+      L"Samples.ExampleLibrary.FakeClient.Biscuit`1",
+      L"Samples.ExampleLibrary.FakeClient.Biscuit",
+      L"Samples.ExampleLibrary.FakeClient.DogClient`2",
+      L"Samples.ExampleLibrary.FakeClient.DogTrick`1",
+      L"Samples.ExampleLibrary.FakeClient.DogTrick"};
+
+  for (auto& def : expected_types) {
+    mdTypeDef typeDef = mdTypeDefNil;
+    auto found = FindTypeDefByName(def, L"Samples.ExampleLibrary",
+                                   metadata_import_, typeDef);
+    EXPECT_TRUE(found) << "Failed type is : " << def << std::endl;
+    EXPECT_NE(typeDef, mdTypeDefNil) << "Failed type is : " << def << std::endl;
+  }
+}
+
+TEST_F(CLRHelperTest, FindNestedTypeDefsByName) {
+  std::vector<std::wstring> expected_types = {
+      L"Samples.ExampleLibrary.FakeClient.Biscuit+Cookie",
+      L"Samples.ExampleLibrary.FakeClient.StructBiscuit+Cookie"};
+
+  for (auto& def : expected_types) {
+    mdTypeDef typeDef = mdTypeDefNil;
+    auto found = FindTypeDefByName(def, L"Samples.ExampleLibrary",
+                                   metadata_import_, typeDef);
+    EXPECT_TRUE(found) << "Failed type is : " << def << std::endl;
+    EXPECT_NE(typeDef, mdTypeDefNil) << "Failed type is : " << def << std::endl;
+  }
+}
+
+TEST_F(CLRHelperTest, DoesNotFindDoubleNestedTypeDefsByName) {
+  std::vector<std::wstring> expected_types = {
+      L"Samples.ExampleLibrary.NotARealClass",
+      L"Samples.ExampleLibrary.FakeClient.Biscuit+Cookie+Raisin"};
+
+  for (auto& def : expected_types) {
+    mdTypeDef typeDef = mdTypeDefNil;
+    auto found = FindTypeDefByName(def, L"Samples.ExampleLibrary",
+                                   metadata_import_, typeDef);
+    EXPECT_FALSE(found) << "Failed type is : " << def << std::endl;
+    EXPECT_EQ(typeDef, mdTypeDefNil) << "Failed type is : " << def << std::endl;
+  }
 }

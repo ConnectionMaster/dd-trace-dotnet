@@ -12,28 +12,43 @@ namespace CallTargetNativeTest.NoOp
         public static CallTargetState OnMethodBegin<TTarget, TArg1>(TTarget instance, TArg1 arg1)
             where TTarget : IInstance, IDuckType
         {
-            CallTargetState returnValue = new CallTargetState(instance.Instance);
-            string msg = $"{returnValue} {nameof(Noop1ArgumentsIntegration)}.OnMethodBegin<{typeof(TTarget).FullName}, {typeof(TArg1).FullName}>({instance}, {arg1})";
-            Console.WriteLine(msg);
+            CallTargetState returnValue = new CallTargetState(null, instance.Instance);
+            Console.WriteLine($"ProfilerOK: BeginMethod(1)<{typeof(Noop1ArgumentsIntegration)}, {typeof(TTarget)}, {typeof(TArg1)}>({instance}, {arg1})");
+            if (instance.Instance?.GetType().Name.Contains("ThrowOnBegin") == true)
+            {
+                Console.WriteLine("Exception thrown.");
+                throw new Exception();
+            }
+
             return returnValue;
         }
 
         public static CallTargetReturn<TReturn> OnMethodEnd<TTarget, TReturn>(TTarget instance, TReturn returnValue, Exception exception, CallTargetState state)
             where TTarget : IInstance, IDuckType
-            where TReturn : IReturnValue, IDuckType
+            where TReturn : IReturnValue
         {
             CallTargetReturn<TReturn> rValue = new CallTargetReturn<TReturn>(returnValue);
-            string msg = $"{rValue} {nameof(Noop1ArgumentsIntegration)}.OnMethodEnd<{typeof(TTarget).FullName}, {typeof(TReturn).FullName}>({instance}, {returnValue}, {exception}, {state})";
-            Console.WriteLine(msg);
+            Console.WriteLine($"ProfilerOK: EndMethod(1)<{typeof(Noop1ArgumentsIntegration)}, {typeof(TTarget)}, {typeof(TReturn)}>({instance}, {returnValue}, {exception?.ToString() ?? "(null)"}, {state})");
+            if (instance.Instance?.GetType().Name.Contains("ThrowOnEnd") == true)
+            {
+                Console.WriteLine("Exception thrown.");
+                throw new Exception();
+            }
+
             return rValue;
         }
 
         public static TReturn OnAsyncMethodEnd<TTarget, TReturn>(TTarget instance, TReturn returnValue, Exception exception, CallTargetState state)
             where TTarget : IInstance, IDuckType
-            where TReturn : IReturnValue, IDuckType
+            where TReturn : IReturnValue
         {
-            string msg = $"{returnValue} {nameof(Noop1ArgumentsIntegration)}.OnAsyncMethodEnd<{typeof(TTarget).FullName}, {typeof(TReturn).FullName}>({instance}, {returnValue}, {exception}, {state})";
-            Console.WriteLine(msg);
+            Console.WriteLine($"ProfilerOK: EndMethodAsync(1)<{typeof(Noop1ArgumentsIntegration)}, {typeof(TTarget)}, {typeof(TReturn)}>({instance}, {returnValue}, {exception?.ToString() ?? "(null)"}, {state})");
+            if (instance.Instance?.GetType().Name.Contains("ThrowOnAsyncEnd") == true)
+            {
+                Console.WriteLine("Exception thrown.");
+                throw new Exception();
+            }
+
             return returnValue;
         }
 

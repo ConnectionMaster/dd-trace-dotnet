@@ -1,19 +1,24 @@
+// <copyright file="TraceContext.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using Datadog.Trace.Logging;
 using Datadog.Trace.PlatformHelpers;
+using Datadog.Trace.Tagging;
 using Datadog.Trace.Util;
 
 namespace Datadog.Trace
 {
     internal class TraceContext : ITraceContext
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<TraceContext>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<TraceContext>();
 
         private readonly DateTimeOffset _utcStart = DateTimeOffset.UtcNow;
         private readonly long _timestamp = Stopwatch.GetTimestamp();
-        private readonly List<Span> _spans = new List<Span>();
+        private ArrayBuilder<Span> _spans;
 
         private int _openSpans;
         private SamplingPriority? _samplingPriority;
@@ -51,7 +56,7 @@ namespace Datadog.Trace
 
         public void AddSpan(Span span)
         {
-            lock (_spans)
+            lock (this)
             {
                 if (RootSpan == null)
                 {
@@ -78,13 +83,14 @@ namespace Datadog.Trace
                     }
                 }
 
-                _spans.Add(span);
                 _openSpans++;
             }
         }
 
         public void CloseSpan(Span span)
         {
+            bool ShouldTriggerPartialFlush() => Tracer.Settings.PartialFlushEnabled && _spans.Count >= Tracer.Settings.PartialFlushMinSpans;
+
             if (span == RootSpan)
             {
                 // lock sampling priority and set metric when root span finishes
@@ -96,24 +102,47 @@ namespace Datadog.Trace
                 }
                 else
                 {
-                    span.SetMetric(Metrics.SamplingPriority, (int)_samplingPriority);
+                    if (span.Tags is CommonTags tags)
+                    {
+                        tags.SamplingPriority = (int)_samplingPriority;
+                    }
+                    else
+                    {
+                        span.SetMetric(Metrics.SamplingPriority, (int)_samplingPriority);
+                    }
                 }
             }
 
-            Span[] spansToWrite = null;
+            ArraySegment<Span> spansToWrite = default;
 
-            lock (_spans)
+            lock (this)
             {
+                _spans.Add(span);
                 _openSpans--;
 
                 if (_openSpans == 0)
                 {
-                    spansToWrite = _spans.ToArray();
-                    _spans.Clear();
+                    spansToWrite = _spans.GetArray();
+                    _spans = default;
+                }
+                else if (ShouldTriggerPartialFlush())
+                {
+                    Log.Debug<ulong, ulong, int>(
+                        "Closing span {spanId} triggered a partial flush of trace {traceId} with {spanCount} pending spans",
+                        span.SpanId,
+                        span.TraceId,
+                        _spans.Count);
+
+                    spansToWrite = _spans.GetArray();
+
+                    // Making the assumption that, if the number of closed spans was big enough to trigger partial flush,
+                    // the number of remaining spans is probably big as well.
+                    // Therefore, we bypass the resize logic and immediately allocate the array to its maximum size
+                    _spans = new ArrayBuilder<Span>(spansToWrite.Count);
                 }
             }
 
-            if (spansToWrite != null)
+            if (spansToWrite.Count > 0)
             {
                 Tracer.Write(spansToWrite);
             }
@@ -151,12 +180,6 @@ namespace Datadog.Trace
                 span.SetTag(Tags.AzureAppServicesOperatingSystem, AzureAppServices.Metadata.OperatingSystem);
                 span.SetTag(Tags.AzureAppServicesRuntime, AzureAppServices.Metadata.Runtime);
                 span.SetTag(Tags.AzureAppServicesExtensionVersion, AzureAppServices.Metadata.SiteExtensionVersion);
-            }
-
-            // set the origin tag to the root span of each trace/subtrace
-            if (span.Context.Origin != null)
-            {
-                span.SetTag(Tags.Origin, span.Context.Origin);
             }
         }
     }

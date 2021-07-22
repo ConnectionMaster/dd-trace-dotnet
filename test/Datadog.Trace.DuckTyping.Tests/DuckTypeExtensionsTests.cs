@@ -1,3 +1,8 @@
+// <copyright file="DuckTypeExtensionsTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System.Threading.Tasks;
 using Xunit;
 
@@ -9,12 +14,12 @@ namespace Datadog.Trace.DuckTyping.Tests
     public class DuckTypeExtensionsTests
     {
         [Fact]
-        public void AsTest()
+        public void DuckCastTest()
         {
             Task task = (Task)Task.FromResult("Hello World");
 
-            var iTaskString = task.As<ITaskString>();
-            var objTaskString = task.As(typeof(ITaskString));
+            var iTaskString = task.DuckCast<ITaskString>();
+            var objTaskString = task.DuckCast(typeof(ITaskString));
 
             Assert.Equal("Hello World", iTaskString.Result);
             Assert.True(iTaskString.GetType() == objTaskString.GetType());
@@ -24,14 +29,57 @@ namespace Datadog.Trace.DuckTyping.Tests
         public void NullCheck()
         {
             object obj = null;
-            var iTaskString = obj.As<ITaskString>();
+            var iTaskString = obj.DuckCast<ITaskString>();
 
             Assert.Null(iTaskString);
+        }
+
+        [Fact]
+        public void TryDuckCastTest()
+        {
+            Task task = (Task)Task.FromResult("Hello World");
+
+            bool tskResultBool = task.TryDuckCast<ITaskString>(out var tskResult);
+            Assert.True(tskResultBool);
+            Assert.Equal("Hello World", tskResult.Result);
+
+            bool tskErrorBool = task.TryDuckCast<ITaskError>(out var tskResultError);
+            Assert.False(tskErrorBool);
+            Assert.Null(tskResultError);
+        }
+
+        [Fact]
+        public void DuckAsTest()
+        {
+            Task task = (Task)Task.FromResult("Hello World");
+
+            var tskResult = task.DuckAs<ITaskString>();
+            var tskResultError = task.DuckAs<ITaskError>();
+
+            Assert.Equal("Hello World", tskResult.Result);
+            Assert.Null(tskResultError);
+        }
+
+        [Fact]
+        public void DuckIsTest()
+        {
+            Task task = (Task)Task.FromResult("Hello World");
+
+            bool bOk = task.DuckIs<ITaskString>();
+            bool bError = task.DuckIs<ITaskError>();
+
+            Assert.True(bOk);
+            Assert.False(bError);
         }
 
         public interface ITaskString
         {
             string Result { get; }
+        }
+
+        public interface ITaskError
+        {
+            string ResultWrong { get; }
         }
     }
 }

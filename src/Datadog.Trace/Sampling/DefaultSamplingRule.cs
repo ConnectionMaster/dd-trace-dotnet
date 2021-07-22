@@ -1,12 +1,18 @@
+// <copyright file="DefaultSamplingRule.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using Datadog.Trace.Logging;
+using Datadog.Trace.Tagging;
 
 namespace Datadog.Trace.Sampling
 {
     internal class DefaultSamplingRule : ISamplingRule
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<DefaultSamplingRule>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<DefaultSamplingRule>();
 
         private Dictionary<SampleRateKey, float> _sampleRates = new Dictionary<SampleRateKey, float>();
 
@@ -31,7 +37,17 @@ namespace Datadog.Trace.Sampling
                 return 1;
             }
 
-            var env = span.GetTag(Tags.Env);
+            string env;
+
+            if (span.Tags is CommonTags tags)
+            {
+                env = tags.Environment;
+            }
+            else
+            {
+                env = span.GetTag(Tags.Env);
+            }
+
             var service = span.ServiceName;
 
             var key = new SampleRateKey(service, env);
@@ -42,7 +58,7 @@ namespace Datadog.Trace.Sampling
                 return sampleRate;
             }
 
-            Log.Debug("Could not establish sample rate for trace {0}", span.TraceId);
+            Log.Debug("Could not establish sample rate for trace {TraceId}", span.TraceId);
 
             return 1;
         }
@@ -67,7 +83,7 @@ namespace Datadog.Trace.Sampling
 
                     if (key == null)
                     {
-                        Log.Warning("Could not parse sample rate key {0}", pair.Key);
+                        Log.Warning("Could not parse sample rate key {SampleRateKey}", pair.Key);
                         continue;
                     }
 

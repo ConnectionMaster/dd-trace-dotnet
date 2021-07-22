@@ -25,11 +25,42 @@ namespace Samples.AspNetMvc5.Controllers
             return View(envVars.ToList());
         }
 
+        public ActionResult Shutdown()
+        {
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+
+            foreach (var assembly in assemblies)
+            {
+                foreach (var type in assembly.DefinedTypes)
+                {
+                    if (type.Namespace == "Coverlet.Core.Instrumentation.Tracker")
+                    {
+                        var unloadModuleMethod = type.GetMethod("UnloadModule", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                        unloadModuleMethod.Invoke(null, new object[] { this, EventArgs.Empty });
+                    }
+                }
+            }
+
+            return RedirectToAction("Index");
+        }
+
+        public ActionResult Get(int id)
+        {
+            return View("Delay", id);
+        }
+
         [Route("delay/{seconds}")]
         public ActionResult Delay(int seconds)
         {
             Thread.Sleep(TimeSpan.FromSeconds(seconds));
             return View(seconds);
+        }
+        
+        [Route("delay-optional/{seconds?}")]
+        public ActionResult Optional(int? seconds)
+        {
+            Thread.Sleep(TimeSpan.FromSeconds(seconds ?? 0));
+            return View("Delay", seconds ?? 0);
         }
 
         [Route("delay-async/{seconds}")]

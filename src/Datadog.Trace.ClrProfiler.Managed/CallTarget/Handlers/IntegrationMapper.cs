@@ -1,3 +1,8 @@
+// <copyright file="IntegrationMapper.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,7 +20,7 @@ namespace Datadog.Trace.ClrProfiler.CallTarget.Handlers
         private const string EndMethodName = "OnMethodEnd";
         private const string EndAsyncMethodName = "OnAsyncMethodEnd";
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(IntegrationMapper));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(IntegrationMapper));
         private static readonly MethodInfo UnwrapReturnValueMethodInfo = typeof(IntegrationMapper).GetMethod(nameof(IntegrationMapper.UnwrapReturnValue), BindingFlags.NonPublic | BindingFlags.Static);
         private static readonly MethodInfo ConvertTypeMethodInfo = typeof(IntegrationMapper).GetMethod(nameof(IntegrationMapper.ConvertType), BindingFlags.NonPublic | BindingFlags.Static);
 
@@ -38,7 +43,7 @@ namespace Datadog.Trace.ClrProfiler.CallTarget.Handlers
             MethodInfo onMethodBeginMethodInfo = integrationType.GetMethod(BeginMethodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
             if (onMethodBeginMethodInfo is null)
             {
-                throw new NullReferenceException($"Couldn't find the method: {BeginMethodName} in type: {integrationType.FullName}");
+                return null;
             }
 
             if (onMethodBeginMethodInfo.ReturnType != typeof(CallTargetState))

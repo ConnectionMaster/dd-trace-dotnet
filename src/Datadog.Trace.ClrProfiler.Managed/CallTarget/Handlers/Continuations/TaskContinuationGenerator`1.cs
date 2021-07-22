@@ -1,5 +1,11 @@
+// <copyright file="TaskContinuationGenerator`1.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Reflection.Emit;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 #pragma warning disable SA1649 // File name must match first type name
@@ -56,10 +62,40 @@ namespace Datadog.Trace.ClrProfiler.CallTarget.Handlers.Continuations
             ContinuationGeneratorState<TTarget> contState = (ContinuationGeneratorState<TTarget>)state;
             if (previousTask.Exception is null)
             {
-                return _continuation(contState.Target, previousTask.Result, null, contState.State);
+                try
+                {
+                    // *
+                    // Calls the CallTarget integration continuation, exceptions here should never bubble up to the application
+                    // *
+                    return _continuation(contState.Target, previousTask.Result, null, contState.State);
+                }
+                catch (Exception ex)
+                {
+                    IntegrationOptions<TIntegration, TTarget>.LogException(ex, "Exception occurred when calling the CallTarget integration continuation.");
+                }
+
+                return previousTask.Result;
             }
 
-            return _continuation(contState.Target, default, previousTask.Exception, contState.State);
+            try
+            {
+                // *
+                // Calls the CallTarget integration continuation, exceptions here should never bubble up to the application
+                // In this case we don't need the return value of the continuation because we are going to throw the original
+                // exception.
+                // *
+                _continuation(contState.Target, default, previousTask.Exception, contState.State);
+            }
+            catch (Exception ex)
+            {
+                IntegrationOptions<TIntegration, TTarget>.LogException(ex, "Exception occurred when calling the CallTarget integration continuation.");
+            }
+
+            // *
+            // If the original task throws an exception we rethrow it here.
+            // *
+            ExceptionDispatchInfo.Capture(previousTask.Exception.GetBaseException()).Throw();
+            return default;
         }
     }
 }

@@ -1,3 +1,8 @@
+// <copyright file="FrameworkDescription.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Linq;
 using System.Reflection;
@@ -10,7 +15,7 @@ namespace Datadog.Trace
 {
     internal partial class FrameworkDescription
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(FrameworkDescription));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(FrameworkDescription));
 
         private static readonly Assembly RootAssembly = typeof(object).Assembly;
 
@@ -75,7 +80,7 @@ namespace Datadog.Trace
             }
             catch (Exception e)
             {
-                Log.SafeLogError(e, "Error getting framework version from [AssemblyInformationalVersion]");
+                Log.Error(e, "Error getting framework version from [AssemblyInformationalVersion]");
             }
 
             if (productVersion == null)
@@ -88,7 +93,7 @@ namespace Datadog.Trace
                 }
                 catch (Exception e)
                 {
-                    Log.SafeLogError(e, "Error getting framework version from [AssemblyFileVersion]");
+                    Log.Error(e, "Error getting framework version from [AssemblyFileVersion]");
                 }
             }
 

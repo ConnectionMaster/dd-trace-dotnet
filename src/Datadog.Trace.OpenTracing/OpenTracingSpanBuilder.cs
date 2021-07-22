@@ -1,3 +1,8 @@
+// <copyright file="OpenTracingSpanBuilder.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -9,7 +14,7 @@ namespace Datadog.Trace.OpenTracing
 {
     internal class OpenTracingSpanBuilder : ISpanBuilder
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<OpenTracingSpanBuilder>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<OpenTracingSpanBuilder>();
 
         private readonly OpenTracingTracer _tracer;
         private readonly object _lock = new object();

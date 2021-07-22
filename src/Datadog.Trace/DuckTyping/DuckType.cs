@@ -1,3 +1,8 @@
+// <copyright file="DuckType.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -53,6 +58,37 @@ namespace Datadog.Trace.DuckTyping
         }
 
         /// <summary>
+        /// Gets if a proxy can be created
+        /// </summary>
+        /// <param name="instance">Instance object</param>
+        /// <typeparam name="T">Duck type</typeparam>
+        /// <returns>true if the proxy can be created; otherwise, false</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool CanCreate<T>(object instance)
+        {
+            return CreateCache<T>.CanCreate(instance);
+        }
+
+        /// <summary>
+        /// Gets if a proxy can be created
+        /// </summary>
+        /// <param name="proxyType">Duck type</param>
+        /// <param name="instance">Instance object</param>
+        /// <returns>true if the proxy can be created; otherwise, false</returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool CanCreate(Type proxyType, object instance)
+        {
+            // Validate arguments
+            EnsureArguments(proxyType, instance);
+
+            // Create Type
+            CreateTypeResult result = GetOrCreateProxyType(proxyType, instance.GetType());
+
+            // Create instance
+            return result.CanCreate();
+        }
+
+        /// <summary>
         /// Gets or create a new proxy type for ducktyping
         /// </summary>
         /// <param name="proxyType">ProxyType interface</param>
@@ -99,14 +135,12 @@ namespace Datadog.Trace.DuckTyping
                         interfaceTypes = new[] { typeof(IDuckType) };
                     }
 
-                    // Ensures the module builder
-                    if (_moduleBuilder is null)
-                    {
-                        var id = Guid.NewGuid().ToString("N");
-                        AssemblyName aName = new AssemblyName("DuckTypeAssembly._" + id);
-                        _assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(aName, AssemblyBuilderAccess.Run);
-                        _moduleBuilder = _assemblyBuilder.DefineDynamicModule("MainModule");
-                    }
+                    // Gets the module builder
+                    var moduleBuilder = GetModuleBuilder(targetType, (targetType.IsPublic || targetType.IsNestedPublic) && (proxyDefinitionType.IsPublic || proxyDefinitionType.IsNestedPublic));
+
+                    // Ensure visibility
+                    EnsureTypeVisibility(moduleBuilder, targetType);
+                    EnsureTypeVisibility(moduleBuilder, proxyDefinitionType);
 
                     string assembly = string.Empty;
                     if (targetType.Assembly != null)
@@ -120,10 +154,10 @@ namespace Datadog.Trace.DuckTyping
                     }
 
                     // Create a valid type name that can be used as a member of a class. (BenchmarkDotNet fails if is an invalid name)
-                    string proxyTypeName = $"{assembly}.{targetType.FullName.Replace(".", "_").Replace("+", "__")}.{proxyDefinitionType.FullName.Replace(".", "_").Replace("+", "__")}";
+                    string proxyTypeName = $"{assembly}.{targetType.FullName.Replace(".", "_").Replace("+", "__")}.{proxyDefinitionType.FullName.Replace(".", "_").Replace("+", "__")}_{++_typeCount}";
 
                     // Create Type
-                    TypeBuilder proxyTypeBuilder = _moduleBuilder.DefineType(
+                    TypeBuilder proxyTypeBuilder = moduleBuilder.DefineType(
                         proxyTypeName,
                         typeAttributes,
                         parentType,
@@ -150,7 +184,7 @@ namespace Datadog.Trace.DuckTyping
 
                         // Create Type
                         Type proxyType = proxyTypeBuilder.CreateTypeInfo().AsType();
-                        return new CreateTypeResult(proxyDefinitionType, proxyType, targetType, CreateStructCopyMethod(proxyDefinitionType, proxyType, targetType), null);
+                        return new CreateTypeResult(proxyDefinitionType, proxyType, targetType, CreateStructCopyMethod(moduleBuilder, proxyDefinitionType, proxyType, targetType), null);
                     }
                     else
                     {
@@ -162,7 +196,7 @@ namespace Datadog.Trace.DuckTyping
 
                         // Create Type
                         Type proxyType = proxyTypeBuilder.CreateTypeInfo().AsType();
-                        return new CreateTypeResult(proxyDefinitionType, proxyType, targetType, GetCreateProxyInstanceDelegate(proxyDefinitionType, proxyType, targetType), null);
+                        return new CreateTypeResult(proxyDefinitionType, proxyType, targetType, GetCreateProxyInstanceDelegate(moduleBuilder, proxyDefinitionType, proxyType, targetType), null);
                     }
                 }
                 catch (Exception ex)
@@ -175,7 +209,7 @@ namespace Datadog.Trace.DuckTyping
         private static FieldInfo CreateIDuckTypeImplementation(TypeBuilder proxyTypeBuilder, Type targetType)
         {
             Type instanceType = targetType;
-            if (!UseDirectAccessTo(targetType))
+            if (!UseDirectAccessTo(proxyTypeBuilder, targetType))
             {
                 instanceType = typeof(object);
             }
@@ -254,6 +288,12 @@ namespace Datadog.Trace.DuckTyping
 
             foreach (PropertyInfo proxyProperty in proxyTypeProperties)
             {
+                // Ignore the properties marked with `DuckIgnore` attribute
+                if (proxyProperty.GetCustomAttribute<DuckIgnoreAttribute>(true) is not null)
+                {
+                    continue;
+                }
+
                 PropertyBuilder propertyBuilder = null;
 
                 // If the property is abstract or interface we make sure that we have the property defined in the new class
@@ -379,6 +419,12 @@ namespace Datadog.Trace.DuckTyping
                     continue;
                 }
 
+                // Ignore the fields marked with `DuckIgnore` attribute
+                if (proxyFieldInfo.GetCustomAttribute<DuckIgnoreAttribute>(true) is not null)
+                {
+                    continue;
+                }
+
                 PropertyBuilder propertyBuilder = null;
 
                 DuckAttribute duckAttribute = proxyFieldInfo.GetCustomAttribute<DuckAttribute>(true) ?? new DuckAttribute();
@@ -422,7 +468,7 @@ namespace Datadog.Trace.DuckTyping
             }
         }
 
-        private static Delegate GetCreateProxyInstanceDelegate(Type proxyDefinitionType, Type proxyType, Type targetType)
+        private static Delegate GetCreateProxyInstanceDelegate(ModuleBuilder moduleBuilder, Type proxyDefinitionType, Type proxyType, Type targetType)
         {
             ConstructorInfo ctor = proxyType.GetConstructors()[0];
 
@@ -434,7 +480,7 @@ namespace Datadog.Trace.DuckTyping
                 true);
             ILGenerator il = createProxyMethod.GetILGenerator();
             il.Emit(OpCodes.Ldarg_0);
-            if (UseDirectAccessTo(targetType))
+            if (UseDirectAccessTo(moduleBuilder, targetType))
             {
                 if (targetType.IsValueType)
                 {
@@ -458,7 +504,7 @@ namespace Datadog.Trace.DuckTyping
             return createProxyMethod.CreateDelegate(delegateType);
         }
 
-        private static Delegate CreateStructCopyMethod(Type proxyDefinitionType, Type proxyType, Type targetType)
+        private static Delegate CreateStructCopyMethod(ModuleBuilder moduleBuilder, Type proxyDefinitionType, Type proxyType, Type targetType)
         {
             ConstructorInfo ctor = proxyType.GetConstructors()[0];
 
@@ -477,7 +523,7 @@ namespace Datadog.Trace.DuckTyping
             // We create an instance of the proxy type
             il.Emit(OpCodes.Ldloca_S, proxyLocal.LocalIndex);
             il.Emit(OpCodes.Ldarg_0);
-            if (UseDirectAccessTo(targetType))
+            if (UseDirectAccessTo(moduleBuilder, targetType))
             {
                 if (targetType.IsValueType)
                 {
@@ -500,6 +546,12 @@ namespace Datadog.Trace.DuckTyping
             {
                 // Skip readonly fields
                 if ((finfo.Attributes & FieldAttributes.InitOnly) != 0)
+                {
+                    continue;
+                }
+
+                // Ignore the fields marked with `DuckIgnore` attribute
+                if (finfo.GetCustomAttribute<DuckIgnoreAttribute>(true) is not null)
                 {
                     continue;
                 }
@@ -569,6 +621,7 @@ namespace Datadog.Trace.DuckTyping
             /// </summary>
             public Type ProxyType
             {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 get
                 {
                     _exceptionInfo?.Throw();
@@ -582,16 +635,29 @@ namespace Datadog.Trace.DuckTyping
             /// <typeparam name="T">Type of the return value</typeparam>
             /// <param name="instance">Target instance value</param>
             /// <returns>Proxy instance</returns>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public T CreateInstance<T>(object instance)
             {
                 return ((CreateProxyInstance<T>)_activator)(instance);
             }
 
+            /// <summary>
+            /// Get if the proxy instance can be created
+            /// </summary>
+            /// <returns>true if the proxy can be created; otherwise, false.</returns>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public bool CanCreate()
+            {
+                return _exceptionInfo == null;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal IDuckType CreateInstance(object instance)
             {
                 return (IDuckType)_activator.DynamicInvoke(instance);
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             private T ThrowOnError<T>(object instance)
             {
                 _exceptionInfo.Throw();
@@ -605,6 +671,16 @@ namespace Datadog.Trace.DuckTyping
         /// <typeparam name="T">Type of proxy definition</typeparam>
         public static class CreateCache<T>
         {
+            /// <summary>
+            /// Gets the type of T
+            /// </summary>
+            public static readonly Type Type = typeof(T);
+
+            /// <summary>
+            /// Gets if the T type is visible
+            /// </summary>
+            public static readonly bool IsVisible = Type.IsPublic || Type.IsNestedPublic;
+
             private static CreateTypeResult _fastPath = default;
 
             /// <summary>
@@ -612,6 +688,7 @@ namespace Datadog.Trace.DuckTyping
             /// </summary>
             /// <param name="targetType">Target type</param>
             /// <returns>CreateTypeResult instance</returns>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static CreateTypeResult GetProxy(Type targetType)
             {
                 // We set a fast path for the first proxy type for a proxy definition. (It's likely to have a proxy definition just for one target type)
@@ -648,15 +725,32 @@ namespace Datadog.Trace.DuckTyping
                 return GetProxy(instance.GetType()).CreateInstance<T>(instance);
             }
 
-            private static CreateTypeResult GetProxySlow(Type targetType)
+            /// <summary>
+            /// Get if the proxy instance can be created
+            /// </summary>
+            /// <param name="instance">Object instance</param>
+            /// <returns>true if a proxy can be created; otherwise, false.</returns>
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            public static bool CanCreate(object instance)
             {
-                Type proxyTypeDefinition = typeof(T);
-                if (!proxyTypeDefinition.IsValueType && !UseDirectAccessTo(proxyTypeDefinition))
+                if (instance is null)
                 {
-                    DuckTypeTypeIsNotPublicException.Throw(proxyTypeDefinition, nameof(proxyTypeDefinition));
+                    return false;
                 }
 
-                return GetOrCreateProxyType(proxyTypeDefinition, targetType);
+                return GetProxy(instance.GetType()).CanCreate();
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static CreateTypeResult GetProxySlow(Type targetType)
+            {
+#if NET45
+                if (!Type.IsValueType && !IsVisible)
+                {
+                    DuckTypeTypeIsNotPublicException.Throw(Type, nameof(Type));
+                }
+#endif
+                return GetOrCreateProxyType(Type, targetType);
             }
         }
     }

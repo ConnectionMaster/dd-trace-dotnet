@@ -1,9 +1,14 @@
+// <copyright file="TracerSettings.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.PlatformHelpers;
 using Datadog.Trace.Util;
 using Datadog.Trace.Vendors.Serilog;
@@ -24,6 +29,8 @@ namespace Datadog.Trace.Configuration
         /// The default port value for <see cref="AgentUri"/>.
         /// </summary>
         public const int DefaultAgentPort = 8126;
+
+        private int _partialFlushMinSpans;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TracerSettings"/> class with default values.
@@ -133,13 +140,12 @@ namespace Datadog.Trace.Configuration
             GlobalTags = GlobalTags.Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key) && !string.IsNullOrWhiteSpace(kvp.Value))
                                    .ToDictionary(kvp => kvp.Key.Trim(), kvp => kvp.Value.Trim());
 
-            HeaderTags = source?.GetDictionary(ConfigurationKeys.HeaderTags) ??
+            var inputHeaderTags = source?.GetDictionary(ConfigurationKeys.HeaderTags, allowOptionalMappings: true) ??
                          // default value (empty)
-                         new ConcurrentDictionary<string, string>();
+                         new Dictionary<string, string>();
 
             // Filter out tags with empty keys or empty values, and trim whitespace
-            HeaderTags = HeaderTags.Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key) && !string.IsNullOrWhiteSpace(kvp.Value))
-                                   .ToDictionary(kvp => kvp.Key.Trim(), kvp => kvp.Value.Trim());
+            HeaderTags = InitializeHeaderTags(inputHeaderTags);
 
             var serviceNameMappings = source?.GetDictionary(ConfigurationKeys.ServiceNameMappings)
                                       ?.Where(kvp => !string.IsNullOrWhiteSpace(kvp.Key) && !string.IsNullOrWhiteSpace(kvp.Value))
@@ -166,9 +172,19 @@ namespace Datadog.Trace.Configuration
                                           // default value
                                           true;
 
+            var urlSubstringSkips = source?.GetString(ConfigurationKeys.HttpClientExcludedUrlSubstrings) ??
+                                    // default value
+                                    (AzureAppServices.Metadata.IsRelevant ? AzureAppServices.Metadata.DefaultHttpClientExclusions : null);
+
+            if (urlSubstringSkips != null)
+            {
+                HttpClientExcludedUrlSubstrings = TrimSplitString(urlSubstringSkips.ToUpperInvariant(), ',').ToArray();
+            }
+
             var httpServerErrorStatusCodes = source?.GetString(ConfigurationKeys.HttpServerErrorStatusCodes) ??
                                            // Default value
                                            "500-599";
+
             HttpServerErrorStatusCodes = ParseHttpCodesToArray(httpServerErrorStatusCodes);
 
             var httpClientErrorStatusCodes = source?.GetString(ConfigurationKeys.HttpClientErrorStatusCodes) ??
@@ -176,8 +192,28 @@ namespace Datadog.Trace.Configuration
                                         "400-499";
             HttpClientErrorStatusCodes = ParseHttpCodesToArray(httpClientErrorStatusCodes);
 
-            TraceQueueSize = source?.GetInt32(ConfigurationKeys.QueueSize)
-                        ?? 1000;
+            TraceBufferSize = source?.GetInt32(ConfigurationKeys.BufferSize)
+                ?? 1024 * 1024 * 10; // 10MB
+
+            TraceBatchInterval = source?.GetInt32(ConfigurationKeys.SerializationBatchInterval)
+                        ?? 100;
+
+            RouteTemplateResourceNamesEnabled = source?.GetBool(ConfigurationKeys.FeatureFlags.RouteTemplateResourceNamesEnabled)
+                                                   ?? false;
+
+            PartialFlushEnabled = source?.GetBool(ConfigurationKeys.PartialFlushEnabled)
+                // default value
+                ?? false;
+
+            var partialFlushMinSpans = source?.GetInt32(ConfigurationKeys.PartialFlushMinSpans);
+
+            if ((partialFlushMinSpans ?? 0) <= 0)
+            {
+                PartialFlushMinSpans = 500;
+            }
+
+            KafkaCreateConsumerScopeEnabled = source?.GetBool(ConfigurationKeys.KafkaCreateConsumerScopeEnabled)
+                                           ?? true; // default
         }
 
         /// <summary>
@@ -349,9 +385,44 @@ namespace Datadog.Trace.Configuration
         }
 
         /// <summary>
+        /// Gets or sets a value indicating whether partial flush is enabled
+        /// </summary>
+        public bool PartialFlushEnabled { get; set; }
+
+        /// <summary>
+        /// Gets or sets the minimum number of closed spans in a trace before it's partially flushed
+        /// </summary>
+        public int PartialFlushMinSpans
+        {
+            get => _partialFlushMinSpans;
+            set
+            {
+                if (value <= 0)
+                {
+                    throw new ArgumentException("The value must be strictly greater than 0", nameof(PartialFlushMinSpans));
+                }
+
+                _partialFlushMinSpans = value;
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether a span context should be created on exiting a successful Kafka
+        /// Consumer.Consume() call, and closed on entering Consumer.Consume().
+        /// </summary>
+        /// <seealso cref="ConfigurationKeys.KafkaCreateConsumerScopeEnabled"/>
+        public bool KafkaCreateConsumerScopeEnabled { get; set; }
+
+        /// <summary>
         /// Gets or sets a value indicating whether the diagnostic log at startup is enabled
         /// </summary>
         public bool StartupDiagnosticLogEnabled { get; set; }
+
+        /// <summary>
+        /// Gets or sets the comma separated list of url patterns to skip tracing.
+        /// </summary>
+        /// <seealso cref="ConfigurationKeys.HttpClientExcludedUrlSubstrings"/>
+        internal string[] HttpClientExcludedUrlSubstrings { get; set; }
 
         /// <summary>
         /// Gets or sets the HTTP status code that should be marked as errors for server integrations.
@@ -366,14 +437,25 @@ namespace Datadog.Trace.Configuration
         internal bool[] HttpClientErrorStatusCodes { get; set; }
 
         /// <summary>
-        /// Gets a value indicating the size of the trace buffer
-        /// </summary>
-        internal int TraceQueueSize { get; }
-
-        /// <summary>
         /// Gets configuration values for changing service names based on configuration
         /// </summary>
         internal ServiceNames ServiceNameMappings { get; }
+
+        /// <summary>
+        /// Gets or sets a value indicating the size in bytes of the trace buffer
+        /// </summary>
+        internal int TraceBufferSize { get; set; }
+
+        /// <summary>
+        /// Gets or sets a value indicating the batch interval for the serialization queue, in milliseconds
+        /// </summary>
+        internal int TraceBatchInterval { get; set; }
+
+        /// <summary>
+        /// Gets a value indicating whether the feature flag to enable the updated ASP.NET resource names is enabled
+        /// </summary>
+        /// <seealso cref="ConfigurationKeys.FeatureFlags.RouteTemplateResourceNamesEnabled"/>
+        internal bool RouteTemplateResourceNamesEnabled { get; }
 
         /// <summary>
         /// Create a <see cref="TracerSettings"/> populated from the default sources
@@ -481,9 +563,41 @@ namespace Datadog.Trace.Configuration
 
         internal bool IsNetStandardFeatureFlagEnabled()
         {
-            var value = EnvironmentHelpers.GetEnvironmentVariable("DD_TRACE_NETSTANDARD_ENABLED", string.Empty);
+            var value = EnvironmentHelpers.GetEnvironmentVariable(ConfigurationKeys.FeatureFlags.NetStandardEnabled, string.Empty);
 
             return value == "1" || value == "true";
+        }
+
+        internal IDictionary<string, string> InitializeHeaderTags(IDictionary<string, string> configurationDictionary)
+        {
+            var headerTags = new Dictionary<string, string>();
+
+            foreach (KeyValuePair<string, string> kvp in configurationDictionary)
+            {
+                if (!string.IsNullOrWhiteSpace(kvp.Key) && string.IsNullOrWhiteSpace(kvp.Value))
+                {
+                    headerTags.Add(kvp.Key.Trim(), string.Empty);
+                }
+                else if (!string.IsNullOrWhiteSpace(kvp.Key) && kvp.Value.TryConvertToNormalizedHeaderTagName(out string result))
+                {
+                    headerTags.Add(kvp.Key.Trim(), result);
+                }
+            }
+
+            return headerTags;
+        }
+
+        internal IEnumerable<string> TrimSplitString(string textValues, char separator)
+        {
+            var values = textValues.Split(separator);
+
+            for (var i = 0; i < values.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(values[i]))
+                {
+                    yield return values[i].Trim();
+                }
+            }
         }
 
         internal bool[] ParseHttpCodesToArray(string httpStatusErrorCodes)

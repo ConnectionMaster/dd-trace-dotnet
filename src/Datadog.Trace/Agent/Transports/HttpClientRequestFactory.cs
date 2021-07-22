@@ -1,3 +1,8 @@
+// <copyright file="HttpClientRequestFactory.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if NETCOREAPP
 using System;
 using System.Net.Http;
@@ -12,12 +17,10 @@ namespace Datadog.Trace.Agent.Transports
         {
             _client = handler == null ? new HttpClient() : new HttpClient(handler);
 
-            // Default headers
-            _client.DefaultRequestHeaders.Add(AgentHttpHeaderNames.Language, ".NET");
-            _client.DefaultRequestHeaders.Add(AgentHttpHeaderNames.TracerVersion, TracerConstants.AssemblyVersion);
-
-            // don't add automatic instrumentation to requests from this HttpClient
-            _client.DefaultRequestHeaders.Add(HttpHeaderNames.TracingEnabled, "false");
+            foreach (var pair in AgentHttpHeaderNames.DefaultHeaders)
+            {
+                _client.DefaultRequestHeaders.Add(pair.Key, pair.Value);
+            }
         }
 
         public string Info(Uri endpoint)

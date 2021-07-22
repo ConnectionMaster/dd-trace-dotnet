@@ -1,3 +1,8 @@
+// <copyright file="Options.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System.Collections.Generic;
 using CommandLine;
 using CommandLine.Text;
@@ -36,7 +41,13 @@ namespace Datadog.Trace.Tools.Runner
         [Option("tracer-home", Required = false, HelpText = "Sets the tracer home folder path.")]
         public string TracerHomeFolder { get; set; }
 
-        [Value(0, Hidden = true, HelpText = "Command to be wrapped by the cli tool.")]
+        [Option("env-vars", Required = false, HelpText = "Sets environment variables to the target command.")]
+        public string EnvironmentValues { get; set; }
+
+        [Option("crank-import", HelpText = "Import crank Json results file.")]
+        public string CrankImportFile { get; set; }
+
+        [Value(0, Required = false, Hidden = true, HelpText = "Command to be wrapped by the cli tool.")]
         public IEnumerable<string> Value { get; set; }
     }
 }

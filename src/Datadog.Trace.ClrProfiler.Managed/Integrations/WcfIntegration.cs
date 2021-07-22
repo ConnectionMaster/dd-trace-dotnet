@@ -1,3 +1,8 @@
+// <copyright file="WcfIntegration.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if NETFRAMEWORK
 using System;
 using System.Collections.Generic;
@@ -22,7 +27,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
         private const string HttpRequestMessagePropertyTypeName = "System.ServiceModel.Channels.HttpRequestMessageProperty";
 
         private static readonly IntegrationInfo IntegrationId = IntegrationRegistry.GetIntegrationInfo(nameof(IntegrationIds.Wcf));
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(WcfIntegration));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(WcfIntegration));
 
         /// <summary>
         /// Instrumentation wrapper for System.ServiceModel.Dispatcher.ChannelHandler
@@ -95,7 +100,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
             }
         }
 
-        private static Scope CreateScope(object requestContext)
+        internal static Scope CreateScope(object requestContext)
         {
             var requestMessage = requestContext.GetProperty<object>("RequestMessage").GetValueOrDefault();
 
@@ -138,7 +143,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                         {
                             var headers = webHeaderCollection.Wrap();
                             propagatedContext = SpanContextPropagator.Instance.Extract(headers);
-                            tagsFromHeaders = SpanContextPropagator.Instance.ExtractHeaderTags(headers, tracer.Settings.HeaderTags);
+                            tagsFromHeaders = SpanContextPropagator.Instance.ExtractHeaderTags(headers, tracer.Settings.HeaderTags, SpanContextPropagator.HttpRequestHeadersTagPrefix);
                         }
                         catch (Exception ex)
                         {

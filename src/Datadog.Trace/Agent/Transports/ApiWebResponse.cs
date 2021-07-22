@@ -1,3 +1,8 @@
+// <copyright file="ApiWebResponse.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.IO;
 using System.Net;
@@ -17,6 +22,8 @@ namespace Datadog.Trace.Agent.Transports
         public int StatusCode => (int)_response.StatusCode;
 
         public long ContentLength => _response.ContentLength;
+
+        public string GetHeader(string headerName) => _response.Headers[headerName];
 
         public async Task<string> ReadAsStringAsync()
         {

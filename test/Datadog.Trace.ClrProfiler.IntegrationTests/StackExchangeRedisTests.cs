@@ -1,17 +1,20 @@
+// <copyright file="StackExchangeRedisTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Datadog.Core.Tools;
+using Datadog.Trace.ClrProfiler.IntegrationTests.TestCollections;
+using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
 
-#if NETFRAMEWORK
-using Datadog.Trace.ExtensionMethods; // needed for Dictionary<K,V>.GetValueOrDefault()
-#endif
-
 namespace Datadog.Trace.ClrProfiler.IntegrationTests
 {
+    [Collection(nameof(StackExchangeRedisTestCollection))]
     public class StackExchangeRedisTests : TestHelper
     {
         public StackExchangeRedisTests(ITestOutputHelper output)
@@ -20,11 +23,22 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             SetServiceVersion("1.0.0");
         }
 
-        [Theory]
-        [MemberData(nameof(PackageVersions.StackExchangeRedis), MemberType = typeof(PackageVersions))]
-        [Trait("Category", "EndToEnd")]
-        public void SubmitsTraces(string packageVersion)
+        public static IEnumerable<object[]> GetStackExchangeRedisData()
         {
+            foreach (object[] item in PackageVersions.StackExchangeRedis)
+            {
+                yield return item.Concat(false);
+                yield return item.Concat(true);
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(GetStackExchangeRedisData))]
+        [Trait("Category", "EndToEnd")]
+        public void SubmitsTraces(string packageVersion, bool enableCallTarget)
+        {
+            SetCallTargetSettings(enableCallTarget);
+
             int agentPort = TcpPortProvider.GetOpenPort();
 
             using (var agent = new MockTracerAgent(agentPort))
@@ -80,7 +94,7 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
                     // { "DEL", $"DEL key" },
                     { "DUMP", $"DUMP key" },
                     { "EXISTS", $"EXISTS key" },
-                    { "PEXPIREAT", $"PEXPIREAT key" },
+                    { "PEXPIRE", $"PEXPIRE key" },
                     { "MOVE", $"MOVE key" },
                     { "PERSIST", $"PERSIST key" },
                     { "RANDOMKEY", $"RANDOMKEY" },
@@ -179,7 +193,7 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
                     // { "DEL", $"DEL {dbPrefix}Key" },
                     { "DUMP", $"DUMP {dbPrefix}Key" },
                     { "EXISTS", $"EXISTS {dbPrefix}Key" },
-                    { "PEXPIREAT", $"PEXPIREAT {dbPrefix}Key" },
+                    { "PEXPIRE", $"PEXPIRE {dbPrefix}Key" },
                     { "MIGRATE", $"MIGRATE {dbPrefix}Key" }, // Only present on 1.0.297+
                     { "MOVE", $"MOVE {dbPrefix}Key" },
                     { "PERSIST", $"PERSIST {dbPrefix}Key" },
@@ -264,15 +278,15 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
                     Assert.Equal("redis.command", span.Name);
                     Assert.Equal("Samples.StackExchange.Redis-redis", span.Service);
                     Assert.Equal(SpanTypes.Redis, span.Type);
-                    Assert.Equal(host, span.Tags.GetValueOrDefault("out.host"));
-                    Assert.Equal(port, span.Tags.GetValueOrDefault("out.port"));
+                    Assert.Equal(host, DictionaryExtensions.GetValueOrDefault(span.Tags, "out.host"));
+                    Assert.Equal(port, DictionaryExtensions.GetValueOrDefault(span.Tags, "out.port"));
                     Assert.False(span.Tags?.ContainsKey(Tags.Version), "External service span should not have service version tag.");
                 }
 
                 var spanLookup = new Dictionary<Tuple<string, string>, int>();
                 foreach (var span in spans)
                 {
-                    var key = new Tuple<string, string>(span.Resource, span.Tags.GetValueOrDefault("redis.raw_command"));
+                    var key = new Tuple<string, string>(span.Resource, DictionaryExtensions.GetValueOrDefault(span.Tags, "redis.raw_command"));
                     if (spanLookup.ContainsKey(key))
                     {
                         spanLookup[key]++;

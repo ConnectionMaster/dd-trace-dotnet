@@ -1,6 +1,11 @@
+// <copyright file="ServiceStackRedisTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using Datadog.Core.Tools;
 using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.TestHelpers;
 using Xunit;
@@ -16,11 +21,22 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             SetServiceVersion("1.0.0");
         }
 
-        [Theory]
-        [MemberData(nameof(PackageVersions.ServiceStackRedis), MemberType = typeof(PackageVersions))]
-        [Trait("Category", "EndToEnd")]
-        public void SubmitsTraces(string packageVersion)
+        public static IEnumerable<object[]> GetServiceStackRedisData()
         {
+            foreach (object[] item in PackageVersions.ServiceStackRedis)
+            {
+                yield return item.Concat(false);
+                yield return item.Concat(true);
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(GetServiceStackRedisData))]
+        [Trait("Category", "EndToEnd")]
+        public void SubmitsTraces(string packageVersion, bool enableCallTarget)
+        {
+            SetCallTargetSettings(enableCallTarget);
+
             int agentPort = TcpPortProvider.GetOpenPort();
 
             using (var agent = new MockTracerAgent(agentPort))
@@ -30,7 +46,7 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
 
                 // note: ignore the INFO command because it's timing is unpredictable (on Linux?)
                 var spans = agent.WaitForSpans(11)
-                                 .Where(s => s.Type == "redis" && s.Resource != "INFO")
+                                 .Where(s => s.Type == "redis" && s.Resource != "INFO" && s.Resource != "ROLE" && s.Resource != "QUIT")
                                  .OrderBy(s => s.Start)
                                  .ToList();
 
@@ -43,14 +59,13 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
                     Assert.Equal("redis.command", span.Name);
                     Assert.Equal("Samples.ServiceStack.Redis-redis", span.Service);
                     Assert.Equal(SpanTypes.Redis, span.Type);
-                    Assert.Equal(host, span.Tags.GetValueOrDefault("out.host"));
-                    Assert.Equal(port, span.Tags.GetValueOrDefault("out.port"));
+                    Assert.Equal(host, DictionaryExtensions.GetValueOrDefault(span.Tags, "out.host"));
+                    Assert.Equal(port, DictionaryExtensions.GetValueOrDefault(span.Tags, "out.port"));
                     Assert.False(span.Tags?.ContainsKey(Tags.Version), "External service span should not have service version tag.");
                 }
 
-                var expected = new TupleList<string, string>
+                var expectedFromOneRun = new TupleList<string, string>
                 {
-                    { "ROLE", "ROLE" },
                     { "SET", $"SET {TestPrefix}ServiceStack.Redis.INCR 0" },
                     { "PING", "PING" },
                     { "DDCUSTOM", "DDCUSTOM COMMAND" },
@@ -62,6 +77,15 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
                     { "SELECT", "SELECT 0" },
                 };
 
+                var expected = new TupleList<string, string>();
+                expected.AddRange(expectedFromOneRun);
+                expected.AddRange(expectedFromOneRun);
+#if NETCOREAPP3_1 || NET5_0
+                expected.AddRange(expectedFromOneRun); // On .NET Core 3.1 and .NET 5 we run the routine a third time
+#endif
+
+                Assert.Equal(expected.Count, spans.Count);
+
                 for (int i = 0; i < expected.Count; i++)
                 {
                     var e1 = expected[i].Item1;
@@ -71,7 +95,7 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
                                  ? spans[i].Resource
                                  : string.Empty;
                     var a2 = i < spans.Count
-                                 ? spans[i].Tags.GetValueOrDefault("redis.raw_command")
+                                 ? DictionaryExtensions.GetValueOrDefault(spans[i].Tags, "redis.raw_command")
                                  : string.Empty;
 
                     Assert.True(e1 == a1, $@"invalid resource name for span #{i}, expected ""{e1}"", actual ""{a1}""");

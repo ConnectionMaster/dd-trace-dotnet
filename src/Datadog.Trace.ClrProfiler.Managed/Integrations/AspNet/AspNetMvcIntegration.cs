@@ -1,12 +1,21 @@
+// <copyright file="AspNetMvcIntegration.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if NETFRAMEWORK
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Web;
 using System.Web.Routing;
+using Datadog.Trace.AspNet;
 using Datadog.Trace.ClrProfiler.Emit;
+using Datadog.Trace.ClrProfiler.Integrations.AspNet;
 using Datadog.Trace.Configuration;
+using Datadog.Trace.DuckTyping;
 using Datadog.Trace.ExtensionMethods;
+using Datadog.Trace.Headers;
 using Datadog.Trace.Logging;
 using Datadog.Trace.Tagging;
 using Datadog.Trace.Util;
@@ -18,8 +27,8 @@ namespace Datadog.Trace.ClrProfiler.Integrations
     /// </summary>
     public static class AspNetMvcIntegration
     {
+        internal const string HttpContextKey = "__Datadog.Trace.ClrProfiler.Integrations.AspNetMvcIntegration";
         private const string OperationName = "aspnet-mvc.request";
-        private const string HttpContextKey = "__Datadog.Trace.ClrProfiler.Integrations.AspNetMvcIntegration";
         private const string MinimumVersion = "4";
         private const string MaximumVersion = "5";
         private const string AssemblyName = "System.Web.Mvc";
@@ -29,14 +38,14 @@ namespace Datadog.Trace.ClrProfiler.Integrations
         private const string RouteCollectionRouteTypeName = "System.Web.Mvc.Routing.RouteCollectionRoute";
 
         private static readonly IntegrationInfo IntegrationId = IntegrationRegistry.GetIntegrationInfo(nameof(IntegrationIds.AspNetMvc));
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(AspNetMvcIntegration));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(AspNetMvcIntegration));
 
         /// <summary>
         /// Creates a scope used to instrument an MVC action and populates some common details.
         /// </summary>
         /// <param name="controllerContext">The System.Web.Mvc.ControllerContext that was passed as an argument to the instrumented method.</param>
         /// <returns>A new scope used to instrument an MVC action.</returns>
-        public static Scope CreateScope(object controllerContext)
+        public static Scope CreateScope(ControllerContextStruct controllerContext)
         {
             Scope scope = null;
 
@@ -48,26 +57,23 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                     return null;
                 }
 
-                if (controllerContext == null || controllerContext.GetType().FullName != ControllerContextTypeName)
-                {
-                    return null;
-                }
-
-                var httpContext = controllerContext.GetProperty<HttpContextBase>("HttpContext").GetValueOrDefault();
+                var httpContext = controllerContext.HttpContext;
 
                 if (httpContext == null)
                 {
                     return null;
                 }
 
+                var newResourceNamesEnabled = Tracer.Instance.Settings.RouteTemplateResourceNamesEnabled;
                 string host = httpContext.Request.Headers.Get("Host");
                 string httpMethod = httpContext.Request.HttpMethod.ToUpperInvariant();
                 string url = httpContext.Request.RawUrl.ToLowerInvariant();
                 string resourceName = null;
 
-                RouteData routeData = controllerContext.GetProperty<RouteData>("RouteData").GetValueOrDefault();
+                RouteData routeData = controllerContext.RouteData;
                 Route route = routeData?.Route as Route;
                 RouteValueDictionary routeValues = routeData?.Values;
+                bool wasAttributeRouted = false;
 
                 if (route == null && routeData?.Route.GetType().FullName == RouteCollectionRouteTypeName)
                 {
@@ -77,6 +83,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                     {
                         // route was defined using attribute routing i.e. [Route("/path/{id}")]
                         // get route and routeValues from the RouteData in routeMatches
+                        wasAttributeRouted = true;
                         route = routeMatches[0].Route as Route;
                         routeValues = routeMatches[0].Values;
 
@@ -93,19 +100,50 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                     }
                 }
 
-                if (string.IsNullOrEmpty(resourceName) && httpContext.Request.Url != null)
-                {
-                    var cleanUri = UriHelpers.GetRelativeUrl(httpContext.Request.Url, tryRemoveIds: true);
-                    resourceName = $"{httpMethod} {cleanUri.ToLowerInvariant()}";
-                }
-
+                string routeUrl = route?.Url;
+                string areaName = (routeValues?.GetValueOrDefault("area") as string)?.ToLowerInvariant();
                 string controllerName = (routeValues?.GetValueOrDefault("controller") as string)?.ToLowerInvariant();
                 string actionName = (routeValues?.GetValueOrDefault("action") as string)?.ToLowerInvariant();
+
+                if (newResourceNamesEnabled && string.IsNullOrEmpty(resourceName) && !string.IsNullOrEmpty(routeUrl))
+                {
+                    resourceName = $"{httpMethod} /{routeUrl.ToLowerInvariant()}";
+                }
+
+                if (string.IsNullOrEmpty(resourceName) && httpContext.Request.Url != null)
+                {
+                    var cleanUri = UriHelpers.GetCleanUriPath(httpContext.Request.Url);
+                    resourceName = $"{httpMethod} {cleanUri.ToLowerInvariant()}";
+                }
 
                 if (string.IsNullOrEmpty(resourceName))
                 {
                     // Keep the legacy resource name, just to have something
                     resourceName = $"{httpMethod} {controllerName}.{actionName}";
+                }
+
+                // Replace well-known routing tokens
+                resourceName =
+                    resourceName
+                       .Replace("{area}", areaName)
+                       .Replace("{controller}", controllerName)
+                       .Replace("{action}", actionName);
+
+                if (newResourceNamesEnabled && !wasAttributeRouted && routeValues is not null && route is not null)
+                {
+                    // Remove unused parameters from conventional route templates
+                    // Don't bother with routes defined using attribute routing
+                    foreach (var parameter in route.Defaults)
+                    {
+                        var parameterName = parameter.Key;
+                        if (parameterName != "area"
+                            && parameterName != "controller"
+                            && parameterName != "action"
+                            && !routeValues.ContainsKey(parameterName))
+                        {
+                            resourceName = resourceName.Replace($"/{{{parameterName}}}", string.Empty);
+                        }
+                    }
                 }
 
                 SpanContext propagatedContext = null;
@@ -119,7 +157,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                         // extract propagated http headers
                         var headers = httpContext.Request.Headers.Wrap();
                         propagatedContext = SpanContextPropagator.Instance.Extract(headers);
-                        tagsFromHeaders = SpanContextPropagator.Instance.ExtractHeaderTags(headers, tracer.Settings.HeaderTags);
+                        tagsFromHeaders = SpanContextPropagator.Instance.ExtractHeaderTags(headers, tracer.Settings.HeaderTags, SpanContextPropagator.HttpRequestHeadersTagPrefix);
                     }
                     catch (Exception ex)
                     {
@@ -131,12 +169,6 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                 scope = Tracer.Instance.StartActiveWithTags(OperationName, propagatedContext, tags: tags);
                 Span span = scope.Span;
 
-                // Fail safe to catch templates in routing values
-                resourceName =
-                    resourceName
-                       .Replace("{controller}", controllerName)
-                       .Replace("{action}", actionName);
-
                 span.DecorateWebServerSpan(
                     resourceName: resourceName,
                     method: httpMethod,
@@ -145,11 +177,18 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                     tags,
                     tagsFromHeaders);
 
-                tags.AspNetRoute = route?.Url;
+                tags.AspNetRoute = routeUrl;
+                tags.AspNetArea = areaName;
                 tags.AspNetController = controllerName;
                 tags.AspNetAction = actionName;
 
                 tags.SetAnalyticsSampleRate(IntegrationId, tracer.Settings, enabledWithGlobalSetting: true);
+
+                if (newResourceNamesEnabled)
+                {
+                    // set the resource name in the HttpContext so TracingHttpModule can update root span
+                    httpContext.Items[SharedConstants.HttpContextPropagatedResourceNameKey] = resourceName;
+                }
             }
             catch (Exception ex)
             {
@@ -199,13 +238,13 @@ namespace Datadog.Trace.ClrProfiler.Integrations
             {
                 if (HttpContext.Current != null)
                 {
-                    scope = CreateScope(controllerContext);
+                    scope = CreateScope(controllerContext.DuckCast<ControllerContextStruct>());
                     HttpContext.Current.Items[HttpContextKey] = scope;
                 }
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Error instrumenting method {0}", "System.Web.Mvc.Async.IAsyncActionInvoker.BeginInvokeAction()");
+                Log.Error(ex, "Error instrumenting method {MethodName}", "System.Web.Mvc.Async.IAsyncActionInvoker.BeginInvokeAction()");
             }
 
             Func<object, object, object, object, object, object> instrumentedMethod;
@@ -288,7 +327,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "Error instrumenting method {0}", $"{AsyncActionInvokerTypeName}.EndInvokeAction()");
+                Log.Error(ex, "Error instrumenting method {MethodName}", $"{AsyncActionInvokerTypeName}.EndInvokeAction()");
             }
 
             Func<object, object, bool> instrumentedMethod;
@@ -324,6 +363,11 @@ namespace Datadog.Trace.ClrProfiler.Integrations
 
                 if (scope != null)
                 {
+                    if (HttpRuntime.UsingIntegratedPipeline)
+                    {
+                        scope.Span.SetHeaderTags<IHeadersCollection>(httpContext.Response.Headers.Wrap(), Tracer.Instance.Settings.HeaderTags, defaultTagPrefix: SpanContextPropagator.HttpResponseHeadersTagPrefix);
+                    }
+
                     scope.Span.SetHttpStatusCode(httpContext.Response.StatusCode, isServer: true);
                     scope.Dispose();
                 }
@@ -355,6 +399,11 @@ namespace Datadog.Trace.ClrProfiler.Integrations
 
         private static void OnRequestCompleted(HttpContext httpContext, Scope scope, DateTimeOffset finishTime)
         {
+            if (HttpRuntime.UsingIntegratedPipeline)
+            {
+                scope.Span.SetHeaderTags<IHeadersCollection>(httpContext.Response.Headers.Wrap(), Tracer.Instance.Settings.HeaderTags, defaultTagPrefix: SpanContextPropagator.HttpResponseHeadersTagPrefix);
+            }
+
             scope.Span.SetHttpStatusCode(httpContext.Response.StatusCode, isServer: true);
             scope.Span.Finish(finishTime);
             scope.Dispose();

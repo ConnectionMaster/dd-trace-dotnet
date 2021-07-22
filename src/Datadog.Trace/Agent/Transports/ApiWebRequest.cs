@@ -1,6 +1,11 @@
+// <copyright file="ApiWebRequest.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
+using System;
 using System.Net;
 using System.Threading.Tasks;
-using Datadog.Trace.Agent.MessagePack;
 
 namespace Datadog.Trace.Agent.Transports
 {
@@ -13,11 +18,10 @@ namespace Datadog.Trace.Agent.Transports
             _request = request;
 
             // Default headers
-            _request.Headers.Add(AgentHttpHeaderNames.Language, ".NET");
-            _request.Headers.Add(AgentHttpHeaderNames.TracerVersion, TracerConstants.AssemblyVersion);
-
-            // don't add automatic instrumentation to requests from this HttpClient
-            _request.Headers.Add(HttpHeaderNames.TracingEnabled, "false");
+            foreach (var pair in AgentHttpHeaderNames.DefaultHeaders)
+            {
+                _request.Headers.Add(pair.Key, pair.Value);
+            }
         }
 
         public void AddHeader(string name, string value)
@@ -25,14 +29,14 @@ namespace Datadog.Trace.Agent.Transports
             _request.Headers.Add(name, value);
         }
 
-        public async Task<IApiResponse> PostAsync(Span[][] traces, FormatterResolverWrapper formatterResolver)
+        public async Task<IApiResponse> PostAsync(ArraySegment<byte> traces)
         {
             _request.Method = "POST";
-
             _request.ContentType = "application/msgpack";
+
             using (var requestStream = await _request.GetRequestStreamAsync().ConfigureAwait(false))
             {
-                await CachedSerializer.Instance.SerializeAsync(requestStream, traces, formatterResolver).ConfigureAwait(false);
+                await requestStream.WriteAsync(traces.Array, traces.Offset, traces.Count).ConfigureAwait(false);
             }
 
             try

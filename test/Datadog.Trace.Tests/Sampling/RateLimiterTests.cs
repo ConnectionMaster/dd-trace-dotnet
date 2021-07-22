@@ -1,3 +1,8 @@
+// <copyright file="RateLimiterTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,7 +20,7 @@ namespace Datadog.Trace.Tests.Sampling
         [Fact]
         public void One_Is_Allowed()
         {
-            var traceContext = new TraceContext(Tracer.Instance);
+            var traceContext = new TraceContext(new Tracer());
             var spanContext = new SpanContext(null, traceContext, "Weeeee");
             var span = new Span(spanContext, null);
             var rateLimiter = new RateLimiter(maxTracesPerInterval: null);
@@ -105,7 +110,7 @@ namespace Datadog.Trace.Tests.Sampling
 
         private static int AskTheRateLimiterABunchOfTimes(RateLimiter rateLimiter, int howManyTimes)
         {
-            var traceContext = new TraceContext(Tracer.Instance);
+            var traceContext = new TraceContext(new Tracer());
             var spanContext = new SpanContext(null, traceContext, "Weeeee");
             var span = new Span(spanContext, null);
 

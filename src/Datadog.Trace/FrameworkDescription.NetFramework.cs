@@ -1,3 +1,8 @@
+// <copyright file="FrameworkDescription.NetFramework.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if NETFRAMEWORK
 using System;
 using System.Linq;
@@ -29,7 +34,7 @@ namespace Datadog.Trace
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Error getting framework description.");
+                Log.Error(ex, "Error getting framework description.");
             }
 
             return new FrameworkDescription(
@@ -63,7 +68,7 @@ namespace Datadog.Trace
             }
             catch (Exception e)
             {
-                Log.SafeLogError(e, "Error getting .NET Framework version from Windows Registry");
+                Log.Error(e, "Error getting .NET Framework version from Windows Registry");
             }
 
             if (productVersion == null)

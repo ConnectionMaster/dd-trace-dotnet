@@ -1,7 +1,15 @@
+// <copyright file="SpanContextPropagator.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
+using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.Headers;
 using Datadog.Trace.Logging;
 
@@ -9,12 +17,16 @@ namespace Datadog.Trace
 {
     internal class SpanContextPropagator
     {
+        internal static readonly string HttpRequestHeadersTagPrefix = "http.request.headers";
+        internal static readonly string HttpResponseHeadersTagPrefix = "http.response.headers";
+
         private const NumberStyles NumberStyles = System.Globalization.NumberStyles.Integer;
         private const int MinimumSamplingPriority = (int)SamplingPriority.UserReject;
         private const int MaximumSamplingPriority = (int)SamplingPriority.UserKeep;
 
         private static readonly CultureInfo InvariantCulture = CultureInfo.InvariantCulture;
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<SpanContextPropagator>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<SpanContextPropagator>();
+        private static readonly ConcurrentDictionary<Key, string> DefaultTagMappingCache = new ConcurrentDictionary<Key, string>();
 
         private static readonly int[] SamplingPriorities;
 
@@ -152,16 +164,67 @@ namespace Datadog.Trace
             return new SpanContext(traceId, parentId, samplingPriority, null, origin);
         }
 
+        [Obsolete("This method is deprecated and will be removed. Use ExtractHeaderTags<T>(T, IEnumerable<KeyValuePair<string, string>>, string) instead. " +
+            "Kept for backwards compatability where there is a version mismatch between manual and automatic instrumentation")]
         public IEnumerable<KeyValuePair<string, string>> ExtractHeaderTags<T>(T headers, IEnumerable<KeyValuePair<string, string>> headerToTagMap)
             where T : IHeadersCollection
         {
             foreach (KeyValuePair<string, string> headerNameToTagName in headerToTagMap)
             {
+                // Empty tag names were only allowed when the newer API was introduced,
+                // so we should never encounter an empty tag name when invoking this API.
+                // But just in case we get here, skip the processing of this header:tag mapping
+                if (string.IsNullOrWhiteSpace(headerNameToTagName.Value))
+                {
+                    continue;
+                }
+
                 string headerValue = ParseString(headers, headerNameToTagName.Key);
 
                 if (headerValue != null)
                 {
                     yield return new KeyValuePair<string, string>(headerNameToTagName.Value, headerValue);
+                }
+            }
+        }
+
+        public IEnumerable<KeyValuePair<string, string>> ExtractHeaderTags<T>(T headers, IEnumerable<KeyValuePair<string, string>> headerToTagMap, string defaultTagPrefix)
+            where T : IHeadersCollection
+        {
+            foreach (KeyValuePair<string, string> headerNameToTagName in headerToTagMap)
+            {
+                string headerValue = ParseString(headers, headerNameToTagName.Key);
+                if (headerValue is null)
+                {
+                    continue;
+                }
+
+                // Tag name is normalized during Tracer instantiation so use as-is
+                if (!string.IsNullOrWhiteSpace(headerNameToTagName.Value))
+                {
+                    yield return new KeyValuePair<string, string>(headerNameToTagName.Value, headerValue);
+                }
+                else
+                {
+                    // Since the header name was saved to do the lookup in the input headers,
+                    // convert the header to its final tag name once per prefix
+                    var cacheKey = new Key(headerNameToTagName.Key, defaultTagPrefix);
+                    string tagNameResult = DefaultTagMappingCache.GetOrAdd(cacheKey, key =>
+                    {
+                        if (key.HeaderName.TryConvertToNormalizedHeaderTagName(out string normalizedHeaderTagName))
+                        {
+                            return key.TagPrefix + "." + normalizedHeaderTagName;
+                        }
+                        else
+                        {
+                            return null;
+                        }
+                    });
+
+                    if (tagNameResult != null)
+                    {
+                        yield return new KeyValuePair<string, string>(tagNameResult, headerValue);
+                    }
                 }
             }
         }
@@ -185,7 +248,7 @@ namespace Datadog.Trace
 
             if (hasValue)
             {
-                Log.Warning("Could not parse {0} headers: {1}", headerName, string.Join(",", headerValues));
+                Log.Warning("Could not parse {HeaderName} headers: {HeaderValues}", headerName, string.Join(",", headerValues));
             }
 
             return 0;
@@ -209,7 +272,7 @@ namespace Datadog.Trace
 
             if (hasValue)
             {
-                Log.Warning("Could not parse {0} headers: {1}", headerName, string.Join(",", headerValues));
+                Log.Warning("Could not parse {HeaderName} headers: {HeaderValues}", headerName, string.Join(",", headerValues));
             }
 
             return 0;
@@ -238,7 +301,7 @@ namespace Datadog.Trace
             if (hasValue)
             {
                 Log.Warning(
-                    "Could not parse {0} headers: {1}",
+                    "Could not parse {HeaderName} headers: {HeaderValues}",
                     headerName,
                     string.Join(",", headerValues));
             }
@@ -268,7 +331,7 @@ namespace Datadog.Trace
             if (hasValue)
             {
                 Log.Warning(
-                    "Could not parse {0} headers: {1}",
+                    "Could not parse {HeaderName} headers: {HeaderValues}",
                     headerName,
                     string.Join(",", headerValues));
             }
@@ -276,7 +339,8 @@ namespace Datadog.Trace
             return default;
         }
 
-        private static string ParseString(IHeadersCollection headers, string headerName)
+        private static string ParseString<T>(T headers, string headerName)
+            where T : IHeadersCollection
         {
             var headerValues = headers.GetValues(headerName);
 
@@ -304,6 +368,51 @@ namespace Datadog.Trace
             }
 
             return null;
+        }
+
+        private struct Key : IEquatable<Key>
+        {
+            public readonly string HeaderName;
+            public readonly string TagPrefix;
+
+            public Key(
+                string headerName,
+                string tagPrefix)
+            {
+                HeaderName = headerName;
+                TagPrefix = tagPrefix;
+            }
+
+            /// <summary>
+            /// Gets the struct hashcode
+            /// </summary>
+            /// <returns>Hashcode</returns>
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return (HeaderName.GetHashCode() * 397) ^ TagPrefix.GetHashCode();
+                }
+            }
+
+            /// <summary>
+            /// Gets if the struct is equal to other object or struct
+            /// </summary>
+            /// <param name="obj">Object to compare</param>
+            /// <returns>True if both are equals; otherwise, false.</returns>
+            public override bool Equals(object obj)
+            {
+                return obj is Key key &&
+                       HeaderName == key.HeaderName &&
+                       TagPrefix == key.TagPrefix;
+            }
+
+            /// <inheritdoc />
+            public bool Equals(Key other)
+            {
+                return HeaderName == other.HeaderName &&
+                       TagPrefix == other.TagPrefix;
+            }
         }
     }
 }

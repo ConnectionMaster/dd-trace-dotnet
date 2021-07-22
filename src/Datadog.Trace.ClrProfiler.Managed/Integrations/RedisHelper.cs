@@ -1,3 +1,8 @@
+// <copyright file="RedisHelper.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using Datadog.Trace.ClrProfiler.Integrations.StackExchange.Redis;
 using Datadog.Trace.Configuration;
@@ -10,13 +15,21 @@ namespace Datadog.Trace.ClrProfiler.Integrations
         private const string OperationName = "redis.command";
         private const string ServiceName = "redis";
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(RedisHelper));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(RedisHelper));
 
         internal static Scope CreateScope(Tracer tracer, IntegrationInfo integrationId, string host, string port, string rawCommand)
         {
             if (!Tracer.Instance.Settings.IsIntegrationEnabled(integrationId))
             {
                 // integration disabled, don't create a scope, skip this trace
+                return null;
+            }
+
+            var parent = tracer.ActiveScope?.Span;
+            if (parent != null &&
+                parent.Type == SpanTypes.Redis &&
+                parent.GetTag(Tags.InstrumentationName) != null)
+            {
                 return null;
             }
 

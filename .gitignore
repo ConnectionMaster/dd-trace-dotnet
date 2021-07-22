@@ -7,6 +7,9 @@
 *.userosscache
 *.sln.docstates
 
+# https://github.com/VerifyTests/Verify
+*.received.*
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
@@ -275,3 +278,12 @@ deploy/AzureAppServices/
 *..DS_Store
 .DS_Store/*
 .DS_Store
+
+# profiler build files
+src/Datadog.Trace.ClrProfiler.Native/build/
+src/Datadog.Trace.ClrProfiler.Native/deps/
+src/Datadog.Trace.ClrProfiler.Native/CMakeFiles/
+src/Datadog.Trace.ClrProfiler.Native/tmp.*
+src/Datadog.Trace.ClrProfiler.Native/Makefile
+src/Datadog.Trace.ClrProfiler.Native/CMakeCache.txt
+src/Datadog.Trace.ClrProfiler.Native/cmake_install.cmake

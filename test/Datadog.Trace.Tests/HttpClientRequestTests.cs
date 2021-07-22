@@ -1,3 +1,8 @@
+// <copyright file="HttpClientRequestTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if NETCOREAPP3_1
 using System;
 using System.Linq;
@@ -22,7 +27,7 @@ namespace Datadog.Trace.Tests
 
             request.AddHeader("Hello", "World");
 
-            await request.PostAsync(new Span[0][], new FormatterResolverWrapper(SpanFormatterResolver.Instance));
+            await request.PostAsync(ArraySegment<byte>.Empty);
 
             var message = handler.Message;
 
@@ -41,11 +46,11 @@ namespace Datadog.Trace.Tests
             var factory = new HttpClientRequestFactory(handler);
             var request = factory.Create(new Uri("http://localhost/"));
 
-            await request.PostAsync(new Span[0][], new FormatterResolverWrapper(SpanFormatterResolver.Instance));
+            await request.PostAsync(ArraySegment<byte>.Empty);
 
             var message = handler.Message;
 
-            Assert.IsAssignableFrom<TracesMessagePackContent>(message.Content);
+            Assert.IsAssignableFrom<ByteArrayContent>(message.Content);
         }
 
         private class CustomHandler : DelegatingHandler

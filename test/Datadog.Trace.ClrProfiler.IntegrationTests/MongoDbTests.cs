@@ -1,4 +1,9 @@
-using Datadog.Core.Tools;
+// <copyright file="MongoDbTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
+using System.Linq;
 using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.TestHelpers;
 using Xunit;
@@ -14,11 +19,22 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             SetServiceVersion("1.0.0");
         }
 
-        [Theory]
-        [MemberData(nameof(PackageVersions.MongoDB), MemberType = typeof(PackageVersions))]
-        [Trait("Category", "EndToEnd")]
-        public void SubmitsTraces(string packageVersion)
+        public static System.Collections.Generic.IEnumerable<object[]> GetMongoDb()
         {
+            foreach (var item in PackageVersions.MongoDB)
+            {
+                yield return item.Concat(false);
+                yield return item.Concat(true);
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(GetMongoDb))]
+        [Trait("Category", "EndToEnd")]
+        public void SubmitsTraces(string packageVersion, bool enableCallTarget)
+        {
+            SetCallTargetSettings(enableCallTarget);
+
             int agentPort = TcpPortProvider.GetOpenPort();
             using (var agent = new MockTracerAgent(agentPort))
             using (var processResult = RunSampleAndWaitForExit(agent.Port, packageVersion: packageVersion))
@@ -28,34 +44,39 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
                 var spans = agent.WaitForSpans(3, 500);
                 Assert.True(spans.Count >= 3, $"Expecting at least 3 spans, only received {spans.Count}");
 
-                var firstSpan = spans[0];
+                var rootSpan = spans.Single(s => s.ParentId == null);
 
                 // Check for manual trace
-                Assert.Equal("Main()", firstSpan.Name);
-                Assert.Equal("Samples.MongoDB", firstSpan.Service);
-                Assert.Null(firstSpan.Type);
+                Assert.Equal("Main()", rootSpan.Name);
+                Assert.Equal("Samples.MongoDB", rootSpan.Service);
+                Assert.Null(rootSpan.Type);
 
                 int spansWithResourceName = 0;
 
-                for (int i = 1; i < spans.Count; i++)
+                foreach (var span in spans)
                 {
-                    if (spans[i].Service == "Samples.MongoDB-mongodb")
+                    if (span == rootSpan)
                     {
-                        Assert.Equal("mongodb.query", spans[i].Name);
-                        Assert.Equal(SpanTypes.MongoDb, spans[i].Type);
-                        Assert.False(spans[i].Tags?.ContainsKey(Tags.Version), "External service span should not have service version tag.");
+                        continue;
+                    }
 
-                        if (spans[i].Resource != null && spans[i].Resource != "mongodb.query")
+                    if (span.Service == "Samples.MongoDB-mongodb")
+                    {
+                        Assert.Equal("mongodb.query", span.Name);
+                        Assert.Equal(SpanTypes.MongoDb, span.Type);
+                        Assert.False(span.Tags?.ContainsKey(Tags.Version), "External service span should not have service version tag.");
+
+                        if (span.Resource != null && span.Resource != "mongodb.query")
                         {
                             spansWithResourceName++;
-                            Assert.True(spans[i].Tags?.ContainsKey(Tags.MongoDbQuery), $"No query found on span {spans[i]}");
+                            Assert.True(span.Tags?.ContainsKey(Tags.MongoDbQuery), $"No query found on span {span}");
                         }
                     }
                     else
                     {
                         // These are manual traces
-                        Assert.Equal("Samples.MongoDB", spans[i].Service);
-                        Assert.True("1.0.0" == spans[i].Tags?.GetValueOrDefault(Tags.Version), spans[i].ToString());
+                        Assert.Equal("Samples.MongoDB", span.Service);
+                        Assert.True("1.0.0" == span.Tags?.GetValueOrDefault(Tags.Version), span.ToString());
                     }
                 }
 

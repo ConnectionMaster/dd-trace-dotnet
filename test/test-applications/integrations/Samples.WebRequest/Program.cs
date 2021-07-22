@@ -5,7 +5,8 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Datadog.Core.Tools;
+using Datadog.Trace;
+using Datadog.Trace.TestHelpers;
 
 namespace Samples.WebRequest
 {
@@ -17,11 +18,14 @@ namespace Samples.WebRequest
         private static Thread listenerThread;
 
         private static string Url;
+        private static bool _tracingDisabled;
+        private static bool _ignoreAsync;
 
         public static async Task Main(string[] args)
         {
-            bool tracingDisabled = args.Any(arg => arg.Equals("TracingDisabled", StringComparison.OrdinalIgnoreCase));
-            Console.WriteLine($"TracingDisabled {tracingDisabled}");
+            _tracingDisabled = args.Any(arg => arg.Equals("TracingDisabled", StringComparison.OrdinalIgnoreCase));
+            _ignoreAsync = args.Any(arg => arg.Equals("IgnoreAsync", StringComparison.OrdinalIgnoreCase));
+            Console.WriteLine($"TracingDisabled {_tracingDisabled}, IgnoreAsync: {_ignoreAsync}");
 
             string port = args.FirstOrDefault(arg => arg.StartsWith("Port="))?.Split('=')[1] ?? "9000";
             Console.WriteLine($"Port {port}");
@@ -34,18 +38,13 @@ namespace Samples.WebRequest
                 // send http requests using WebClient
                 Console.WriteLine();
                 Console.WriteLine("Sending request with WebClient.");
-                await RequestHelpers.SendWebClientRequests(tracingDisabled, Url, RequestContent);
-                await RequestHelpers.SendWebRequestRequests(tracingDisabled, Url, RequestContent);
+                await RequestHelpers.SendWebClientRequests(_tracingDisabled, Url, RequestContent);
+                await RequestHelpers.SendWebRequestRequests(_tracingDisabled, Url, RequestContent);
 
                 Console.WriteLine();
                 Console.WriteLine("Stopping HTTP listener.");
                 listener.Stop();
             }
-
-            // Force process to end, otherwise the background listener thread lives forever in .NET Core.
-            // Apparently listener.GetContext() doesn't throw an exception if listener.Stop() is called,
-            // like it does in .NET Framework.
-            Environment.Exit(0);
         }
 
         public static HttpListener StartHttpListenerWithPortResilience(string port, int retries = 5)
@@ -64,7 +63,7 @@ namespace Samples.WebRequest
                 {
                     listener.Start();
 
-                    listenerThread = new Thread(HandleHttpRequests);
+                    listenerThread = new Thread(HandleHttpRequests) { IsBackground = true };
                     listenerThread.Start(listener);
 
                     return listener;
@@ -84,6 +83,8 @@ namespace Samples.WebRequest
 
         private static void HandleHttpRequests(object state)
         {
+            var expectedHeaders = new[] { HttpHeaderNames.TraceId, HttpHeaderNames.ParentId, HttpHeaderNames.SamplingPriority };
+
             var listener = (HttpListener)state;
 
             while (listener.IsListening)
@@ -93,6 +94,32 @@ namespace Samples.WebRequest
                     var context = listener.GetContext();
 
                     Console.WriteLine("[HttpListener] received request");
+
+                    // Check Datadog headers
+                    if (!_ignoreAsync || context.Request.Url.Query.IndexOf("Async", StringComparison.OrdinalIgnoreCase) == -1)
+                    {
+                        foreach (var header in expectedHeaders)
+                        {
+                            bool headerMissing = context.Request.Headers[header] == null;
+
+                            if (_tracingDisabled)
+                            {
+                                if (!headerMissing)
+                                {
+                                    Console.Error.WriteLine($"Found header {header} for request {context.Request.Url}");
+                                    Environment.Exit(-1);
+                                }
+                            }
+                            else
+                            {
+                                if (headerMissing)
+                                {
+                                    Console.Error.WriteLine($"Missing header {header} for request {context.Request.Url}");
+                                    Environment.Exit(-1);
+                                }
+                            }
+                        }
+                    }
 
                     // read request content and headers
                     using (var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))

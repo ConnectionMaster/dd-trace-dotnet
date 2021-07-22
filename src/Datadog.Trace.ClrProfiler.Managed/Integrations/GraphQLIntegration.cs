@@ -1,3 +1,8 @@
+// <copyright file="GraphQLIntegration.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -34,7 +39,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
 
         private const string TaskOfGraphQLExecutionResult = "System.Threading.Tasks.Task`1<" + GraphQLExecutionResultName + ">";
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(GraphQLIntegration));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(GraphQLIntegration));
 
         /// <summary>
         /// Wrap the original method by adding instrumentation code around it.
@@ -170,7 +175,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                         .Start(moduleVersionPtr, mdToken, opCode, methodName)
                         .WithConcreteType(executionStrategyInstanceType)
                         .WithParameters(context)
-                        .WithNamespaceAndNameFilters(ClrNames.GenericTask, "GraphQL.Execution.ExecutionContext")
+                        .WithNamespaceAndNameFilters(TaskOfGraphQLExecutionResult, "GraphQL.Execution.ExecutionContext")
                         .Build();
             }
             catch (Exception ex)

@@ -1,3 +1,8 @@
+// <copyright file="TracerTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Linq;
 using System.Net;
@@ -15,8 +20,11 @@ using Datadog.Trace.Agent;
 using Datadog.Trace.Configuration;
 using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.Headers;
+using Datadog.Trace.Logging;
 using Datadog.Trace.Sampling;
 using Datadog.Trace.TestHelpers;
+using Datadog.Trace.Vendors.StatsdClient;
+using FluentAssertions;
 using Moq;
 using Xunit;
 
@@ -347,7 +355,7 @@ namespace Datadog.Trace.Tests
             using var secondSpan = _tracer.StartActive("Child", firstSpan.Span.Context);
             Assert.False(secondSpan.Span.IsRootSpan);
             Assert.Equal(origin, secondSpan.Span.Context.Origin);
-            Assert.Null(secondSpan.Span.GetTag(Tags.Origin));
+            Assert.Equal(origin, secondSpan.Span.GetTag(Tags.Origin));
         }
 
         [Fact]
@@ -373,6 +381,55 @@ namespace Datadog.Trace.Tests
             Assert.Equal(secondSpan.Span.Context.Origin, resultContext.Origin);
             Assert.Equal(origin, resultContext.Origin);
         }
+
+        [Theory]
+        [InlineData("7.25.0", true, true)] // Old agent, partial flush enabled
+        [InlineData("7.25.0", false, false)] // Old agent, partial flush disabled
+        [InlineData("7.26.0", true, false)] // New agent, partial flush enabled
+        [InlineData("invalid version", true, true)] // Version check fail, partial flush enabled
+        [InlineData("invalid version", false, false)] // Version check fail, partial flush disabled
+        [InlineData("", true, true)] // Version check fail, partial flush enabled
+        [InlineData("", false, false)] // Version check fail, partial flush disabled
+        public void LogPartialFlushWarning(string agentVersion, bool partialFlushEnabled, bool expectedResult)
+        {
+            _tracer.Settings.PartialFlushEnabled = partialFlushEnabled;
+
+            // First call depends on the parameters of the test
+            _tracer.ShouldLogPartialFlushWarning(agentVersion).Should().Be(expectedResult);
+
+            // Second call should always be false
+            _tracer.ShouldLogPartialFlushWarning(agentVersion).Should().BeFalse();
+        }
+
+        [Fact]
+        public void RuntimeId()
+        {
+            var runtimeId = Tracer.RuntimeId;
+
+            // Runtime id should be stable for a given process
+            Tracer.RuntimeId.Should().Be(runtimeId);
+
+            // Runtime id should be a UUID
+            Guid.TryParse(runtimeId, out _).Should().BeTrue();
+        }
+
+        [Fact]
+        public async Task ForceFlush()
+        {
+            var agent = new Mock<IAgentWriter>();
+
+            var settings = new TracerSettings
+            {
+                StartupDiagnosticLogEnabled = false
+            };
+
+            var tracer = new Tracer(settings, agent.Object, Mock.Of<ISampler>(), Mock.Of<IScopeManager>(), Mock.Of<IDogStatsd>());
+
+            await tracer.ForceFlushAsync();
+
+            agent.Verify(a => a.FlushTracesAsync(), Times.Once);
+        }
+
 #if NET452
 
         // Test that storage in the Logical Call Context does not expire

@@ -1,9 +1,15 @@
+// <copyright file="Instrumentation.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using Datadog.Trace.Configuration;
 using Datadog.Trace.DiagnosticListeners;
 using Datadog.Trace.Logging;
+using Datadog.Trace.ServiceFabric;
 
 namespace Datadog.Trace.ClrProfiler
 {
@@ -22,7 +28,7 @@ namespace Datadog.Trace.ClrProfiler
         /// </summary>
         public static readonly string ProfilerClsid = "{846F5F1C-F9AE-4B07-969E-05C26BC060D8}";
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(Instrumentation));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(Instrumentation));
 
         /// <summary>
         /// Gets a value indicating whether Datadog's profiler is attached to the current process.
@@ -58,11 +64,21 @@ namespace Datadog.Trace.ClrProfiler
 
             try
             {
+                // ensure global instance is created if it's not already
                 _ = Tracer.Instance;
             }
             catch
             {
                 // ignore
+            }
+
+            try
+            {
+                Log.Information($"IsProfilerAttached: {NativeMethods.IsProfilerAttached()}");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, ex.Message);
             }
 
 #if !NETFRAMEWORK
@@ -87,6 +103,29 @@ namespace Datadog.Trace.ClrProfiler
             catch
             {
                 // ignore
+            }
+
+            // we only support Service Fabric Service Remoting instrumentation on .NET Core (including .NET 5+)
+            if (string.Equals(FrameworkDescription.Instance.Name, ".NET Core", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(FrameworkDescription.Instance.Name, ".NET", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    ServiceRemotingClient.StartTracing();
+                }
+                catch
+                {
+                    // ignore
+                }
+
+                try
+                {
+                    ServiceRemotingService.StartTracing();
+                }
+                catch
+                {
+                    // ignore
+                }
             }
 #endif
         }

@@ -1,3 +1,8 @@
+// <copyright file="IntegrationVersionRange.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 namespace Datadog.Trace.ClrProfiler
 {
     /// <summary>
@@ -65,7 +70,7 @@ namespace Datadog.Trace.ClrProfiler
 
         /// <summary>
         /// Gets the MaximumMajor, MaximumMinor, and MaximumPatch properties.
-        /// Convenience property for setting target minimum version.
+        /// Convenience property for setting target maximum version.
         /// </summary>
         public string MaximumVersion
         {

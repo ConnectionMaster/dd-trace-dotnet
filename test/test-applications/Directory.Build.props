@@ -1,9 +1,10 @@
 <Project>
   <PropertyGroup>
-    <OutputType Condition="'$(OutputType)' == ''">Exe</OutputType>
-    <TargetFrameworks Condition="'$(TargetFrameworks)' == '' and '$(OS)' == 'Windows_NT'">net452;net461;netcoreapp2.1;netcoreapp3.0;netcoreapp3.1</TargetFrameworks>
-    <TargetFrameworks Condition="'$(TargetFrameworks)' == ''">netcoreapp2.1;netcoreapp3.0;netcoreapp3.1</TargetFrameworks>
-    <TargetFrameworks Condition="$(MSBuildVersion) >= 16.8.0 AND !$(TargetFrameworks.Contains('net5.0'))">$(TargetFrameworks);net5.0</TargetFrameworks>
+    <!-- only run .NET Framework tests on Windows -->
+    <TargetFrameworks Condition="'$(OS)' == 'Windows_NT'">net452;net461;netcoreapp2.1;netcoreapp3.0;netcoreapp3.1;net5.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(OS)' != 'Windows_NT'">netcoreapp2.1;netcoreapp3.0;netcoreapp3.1;net5.0</TargetFrameworks>
+
+    <OutputType>Exe</OutputType>
     <Platforms>x64;x86</Platforms>
     <PlatformTarget>$(Platform)</PlatformTarget>
     <LangVersion>latest</LangVersion>
@@ -19,6 +20,9 @@
     <!--These should be consolidated in a file that can be shared for the tests and samples directories -->
     <DefineConstants Condition="'$(BuildingInsideVisualStudio)'=='true' or '$(TestAllPackageVersions)'!='true'">$(DefineConstants);DEFAULT_SAMPLES</DefineConstants>
     <DefineConstants Condition="'$(PerformComprehensiveTesting)'=='true'">$(DefineConstants);COMPREHENSIVE_TESTS</DefineConstants>
+
+    <!-- Hide warnings for EOL .NET Core targets (e.g. netcoreapp3.0) -->
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(ExcludeManagedProfiler)' != 'true' and
@@ -37,7 +41,8 @@
              Link="profiler-lib\integrations.json" />
   </ItemGroup>
 
-  <Target Name="AfterBuildCopyManagedProfiler" AfterTargets="AfterBuild" Condition=" '$(LoadManagedProfilerFromProfilerDirectory)' == 'true'">
+  <Target Name="AfterBuildCopyManagedProfiler" AfterTargets="AfterBuild"
+          Condition=" '$(ExcludeManagedProfiler)' != 'true' AND '$(LoadManagedProfilerFromProfilerDirectory)' == 'true'">
     <ItemGroup>
       <!-- Subfolders of the output directory should each be a target framework -->
       <ManagedProfilerFiles Include="$(ManagedProfilerOutputDirectory)\**\*.dll" Exclude="$(ManagedProfilerOutputDirectory)\*\runtimes\**\*.dll" />

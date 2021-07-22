@@ -1,4 +1,9 @@
-using System.Runtime.InteropServices;
+// <copyright file="AgentHttpHeaderNames.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
+using System.Collections.Generic;
 
 namespace Datadog.Trace
 {
@@ -37,5 +42,28 @@ namespace Datadog.Trace
         /// The id of the container where the traced application is running.
         /// </summary>
         public const string ContainerId = "Datadog-Container-ID";
+
+        /// <summary>
+        /// Tells the agent whether top-level spans are computed by the tracer
+        /// </summary>
+        public const string ComputedTopLevelSpan = "Datadog-Client-Computed-Top-Level";
+
+        /// <summary>
+        /// Version reported by the Datadog agent
+        /// </summary>
+        public const string AgentVersion = "Datadog-Agent-Version";
+
+        /// <summary>
+        /// Gets the default constant header that should be added to any request to the agent
+        /// </summary>
+        internal static KeyValuePair<string, string>[] DefaultHeaders { get; } =
+        {
+            new(Language, ".NET"),
+            new(TracerVersion, TracerConstants.AssemblyVersion),
+            new(HttpHeaderNames.TracingEnabled, "false"), // don't add automatic instrumentation to requests directed to the agent
+            new(LanguageInterpreter, FrameworkDescription.Instance.Name),
+            new(LanguageVersion, FrameworkDescription.Instance.ProductVersion),
+            new(ComputedTopLevelSpan, "1")
+        };
     }
 }

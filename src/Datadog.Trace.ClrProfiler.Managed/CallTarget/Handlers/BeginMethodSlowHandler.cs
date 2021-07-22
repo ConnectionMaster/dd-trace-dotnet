@@ -1,3 +1,8 @@
+// <copyright file="BeginMethodSlowHandler.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
@@ -36,7 +41,7 @@ namespace Datadog.Trace.ClrProfiler.CallTarget.Handlers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static CallTargetState Invoke(TTarget instance, object[] arguments)
         {
-            return CallTargetState.WithPreviousScope(Tracer.Instance.ActiveScope, _invokeDelegate(instance, arguments));
+            return new CallTargetState(Tracer.Instance.ActiveScope, _invokeDelegate(instance, arguments));
         }
     }
 }

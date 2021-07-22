@@ -11,16 +11,26 @@ namespace CallTargetNativeTest.NoOp
         public static CallTargetState OnMethodBegin<TTarget>(TTarget instance)
         {
             CallTargetState returnValue = CallTargetState.GetDefault();
-            string msg = $"{returnValue} {nameof(Noop0ArgumentsVoidIntegration)}.OnMethodBegin<{typeof(TTarget).FullName}>({instance})";
-            Console.WriteLine(msg);
+            Console.WriteLine($"ProfilerOK: BeginMethod(0)<{typeof(Noop0ArgumentsVoidIntegration)}, {typeof(TTarget)}>({instance})");
+            if (instance?.GetType().Name.Contains("ThrowOnBegin") == true)
+            {
+                Console.WriteLine("Exception thrown.");
+                throw new Exception();
+            }
+
             return returnValue;
         }
 
         public static CallTargetReturn OnMethodEnd<TTarget>(TTarget instance, Exception exception, CallTargetState state)
         {
             CallTargetReturn returnValue = CallTargetReturn.GetDefault();
-            string msg = $"{returnValue} {nameof(Noop0ArgumentsVoidIntegration)}.OnMethodEnd<{typeof(TTarget).FullName}>({instance}, {exception}, {state})";
-            Console.WriteLine(msg);
+            Console.WriteLine($"ProfilerOK: EndMethod(0)<{typeof(Noop0ArgumentsVoidIntegration)}, {typeof(TTarget)}>({instance}, {exception?.ToString() ?? "(null)"}, {state})");
+            if (instance?.GetType().Name.Contains("ThrowOnEnd") == true)
+            {
+                Console.WriteLine("Exception thrown.");
+                throw new Exception();
+            }
+
             return returnValue;
         }
     }

@@ -1,3 +1,8 @@
+// <copyright file="MethodTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using Datadog.Trace.DuckTyping.Tests.Methods.ProxiesDefinitions;
@@ -21,9 +26,9 @@ namespace Datadog.Trace.DuckTyping.Tests.Methods
         [MemberData(nameof(Data))]
         public void ReturnMethods(object obscureObject)
         {
-            var duckInterface = obscureObject.As<IObscureDuckType>();
-            var duckAbstract = obscureObject.As<ObscureDuckTypeAbstractClass>();
-            var duckVirtual = obscureObject.As<ObscureDuckTypeVirtualClass>();
+            var duckInterface = obscureObject.DuckCast<IObscureDuckType>();
+            var duckAbstract = obscureObject.DuckCast<ObscureDuckTypeAbstractClass>();
+            var duckVirtual = obscureObject.DuckCast<ObscureDuckTypeVirtualClass>();
 
             // Integers
             Assert.Equal(20, duckInterface.Sum(10, 10));
@@ -56,7 +61,7 @@ namespace Datadog.Trace.DuckTyping.Tests.Methods
             Assert.Equal(20, duckVirtual.InternalSum(10, 10));
 
             var dummy = new ObscureObject.DummyFieldObject { MagicNumber = 987654 };
-            var dummyInt = dummy.As<IDummyFieldObject>();
+            var dummyInt = dummy.DuckCast<IDummyFieldObject>();
             Assert.Equal(dummy.MagicNumber, duckInterface.Bypass(dummyInt).MagicNumber);
             Assert.Equal(dummy.MagicNumber, duckAbstract.Bypass(dummyInt).MagicNumber);
             Assert.Equal(dummy.MagicNumber, duckVirtual.Bypass(dummyInt).MagicNumber);
@@ -66,9 +71,9 @@ namespace Datadog.Trace.DuckTyping.Tests.Methods
         [MemberData(nameof(Data))]
         public void VoidMethods(object obscureObject)
         {
-            var duckInterface = obscureObject.As<IObscureDuckType>();
-            var duckAbstract = obscureObject.As<ObscureDuckTypeAbstractClass>();
-            var duckVirtual = obscureObject.As<ObscureDuckTypeVirtualClass>();
+            var duckInterface = obscureObject.DuckCast<IObscureDuckType>();
+            var duckAbstract = obscureObject.DuckCast<ObscureDuckTypeAbstractClass>();
+            var duckVirtual = obscureObject.DuckCast<ObscureDuckTypeVirtualClass>();
 
             // Void with object
             duckInterface.Add("Key01", new ObscureObject.DummyFieldObject());
@@ -90,9 +95,9 @@ namespace Datadog.Trace.DuckTyping.Tests.Methods
         [MemberData(nameof(Data))]
         public void RefParametersMethods(object obscureObject)
         {
-            var duckInterface = obscureObject.As<IObscureDuckType>();
-            var duckAbstract = obscureObject.As<ObscureDuckTypeAbstractClass>();
-            var duckVirtual = obscureObject.As<ObscureDuckTypeVirtualClass>();
+            var duckInterface = obscureObject.DuckCast<IObscureDuckType>();
+            var duckAbstract = obscureObject.DuckCast<ObscureDuckTypeAbstractClass>();
+            var duckVirtual = obscureObject.DuckCast<ObscureDuckTypeVirtualClass>();
 
             // Ref parameter
             int value = 4;
@@ -129,11 +134,11 @@ namespace Datadog.Trace.DuckTyping.Tests.Methods
             object refObject;
             refObject = null;
             Assert.True(duckInterface.TryGetReferenceObject(ref refObject));
-            Assert.Equal(100, refObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(100, refObject.DuckCast<IDummyFieldObject>().MagicNumber);
             Assert.True(duckAbstract.TryGetReferenceObject(ref refObject));
-            Assert.Equal(101, refObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(101, refObject.DuckCast<IDummyFieldObject>().MagicNumber);
             Assert.True(duckVirtual.TryGetReferenceObject(ref refObject));
-            Assert.Equal(102, refObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(102, refObject.DuckCast<IDummyFieldObject>().MagicNumber);
 
             // Private internal parameter type with duck type output
             refDuckType = null;
@@ -147,20 +152,20 @@ namespace Datadog.Trace.DuckTyping.Tests.Methods
             // Private internal parameter type object output
             refObject = null;
             Assert.True(duckInterface.TryGetPrivateReferenceObject(ref refObject));
-            Assert.Equal(100, refObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(100, refObject.DuckCast<IDummyFieldObject>().MagicNumber);
             Assert.True(duckAbstract.TryGetPrivateReferenceObject(ref refObject));
-            Assert.Equal(101, refObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(101, refObject.DuckCast<IDummyFieldObject>().MagicNumber);
             Assert.True(duckVirtual.TryGetPrivateReferenceObject(ref refObject));
-            Assert.Equal(102, refObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(102, refObject.DuckCast<IDummyFieldObject>().MagicNumber);
         }
 
         [Theory]
         [MemberData(nameof(Data))]
         public void OutParametersMethods(object obscureObject)
         {
-            var duckInterface = obscureObject.As<IObscureDuckType>();
-            var duckAbstract = obscureObject.As<ObscureDuckTypeAbstractClass>();
-            var duckVirtual = obscureObject.As<ObscureDuckTypeVirtualClass>();
+            var duckInterface = obscureObject.DuckCast<IObscureDuckType>();
+            var duckAbstract = obscureObject.DuckCast<ObscureDuckTypeAbstractClass>();
+            var duckVirtual = obscureObject.DuckCast<ObscureDuckTypeVirtualClass>();
 
             // Out parameter
             int outValue;
@@ -198,15 +203,15 @@ namespace Datadog.Trace.DuckTyping.Tests.Methods
             object outObject;
             Assert.True(duckInterface.TryGetObscureObject(out outObject));
             Assert.NotNull(outObject);
-            Assert.Equal(99, outObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(99, outObject.DuckCast<IDummyFieldObject>().MagicNumber);
 
             Assert.True(duckAbstract.TryGetObscureObject(out outObject));
             Assert.NotNull(outObject);
-            Assert.Equal(99, outObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(99, outObject.DuckCast<IDummyFieldObject>().MagicNumber);
 
             Assert.True(duckVirtual.TryGetObscureObject(out outObject));
             Assert.NotNull(outObject);
-            Assert.Equal(99, outObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(99, outObject.DuckCast<IDummyFieldObject>().MagicNumber);
 
             // Private internal parameter type with duck type output
             Assert.True(duckInterface.TryGetPrivateObscure(out outDuckType));
@@ -224,15 +229,15 @@ namespace Datadog.Trace.DuckTyping.Tests.Methods
             // Private internal parameter type object output
             Assert.True(duckInterface.TryGetPrivateObscureObject(out outObject));
             Assert.NotNull(outObject);
-            Assert.Equal(99, outObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(99, outObject.DuckCast<IDummyFieldObject>().MagicNumber);
 
             Assert.True(duckAbstract.TryGetPrivateObscureObject(out outObject));
             Assert.NotNull(outObject);
-            Assert.Equal(99, outObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(99, outObject.DuckCast<IDummyFieldObject>().MagicNumber);
 
             Assert.True(duckVirtual.TryGetPrivateObscureObject(out outObject));
             Assert.NotNull(outObject);
-            Assert.Equal(99, outObject.As<IDummyFieldObject>().MagicNumber);
+            Assert.Equal(99, outObject.DuckCast<IDummyFieldObject>().MagicNumber);
         }
 
         [Fact]
@@ -240,7 +245,7 @@ namespace Datadog.Trace.DuckTyping.Tests.Methods
         {
             Dictionary<string, string> dictionary = new Dictionary<string, string>();
 
-            var duckInterface = dictionary.As<IDictioDuckType>();
+            var duckInterface = dictionary.DuckCast<IDictioDuckType>();
 
             duckInterface.Add("Key01", "Value01");
             duckInterface.Add("Key02", "Value02");
@@ -281,29 +286,31 @@ namespace Datadog.Trace.DuckTyping.Tests.Methods
         [MemberData(nameof(Data))]
         public void DefaultGenericsMethods(object obscureObject)
         {
+#if NET452
             if (!obscureObject.GetType().IsPublic && !obscureObject.GetType().IsNestedPublic)
             {
                 Assert.Throws<DuckTypeProxyMethodsWithGenericParametersNotSupportedInNonPublicInstancesException>(
                     () =>
                     {
-                        obscureObject.As<IDefaultGenericMethodDuckType>();
+                        obscureObject.DuckCast<IDefaultGenericMethodDuckType>();
                     });
                 Assert.Throws<DuckTypeProxyMethodsWithGenericParametersNotSupportedInNonPublicInstancesException>(
                     () =>
                     {
-                        obscureObject.As<DefaultGenericMethodDuckTypeAbstractClass>();
+                        obscureObject.DuckCast<DefaultGenericMethodDuckTypeAbstractClass>();
                     });
                 Assert.Throws<DuckTypeProxyMethodsWithGenericParametersNotSupportedInNonPublicInstancesException>(
                     () =>
                     {
-                        obscureObject.As<DefaultGenericMethodDuckTypeVirtualClass>();
+                        obscureObject.DuckCast<DefaultGenericMethodDuckTypeVirtualClass>();
                     });
                 return;
             }
+#endif
 
-            var duckInterface = obscureObject.As<IDefaultGenericMethodDuckType>();
-            var duckAbstract = obscureObject.As<DefaultGenericMethodDuckTypeAbstractClass>();
-            var duckVirtual = obscureObject.As<DefaultGenericMethodDuckTypeVirtualClass>();
+            var duckInterface = obscureObject.DuckCast<IDefaultGenericMethodDuckType>();
+            var duckAbstract = obscureObject.DuckCast<DefaultGenericMethodDuckTypeAbstractClass>();
+            var duckVirtual = obscureObject.DuckCast<DefaultGenericMethodDuckTypeVirtualClass>();
 
             // GetDefault int
             Assert.Equal(0, duckInterface.GetDefault<int>());
@@ -340,9 +347,9 @@ namespace Datadog.Trace.DuckTyping.Tests.Methods
         [MemberData(nameof(Data))]
         public void GenericsWithAttributeResolution(object obscureObject)
         {
-            var duckInterface = obscureObject.As<IGenericsWithAttribute>();
-            var duckAttribute = obscureObject.As<AbstractGenericsWithAttribute>();
-            var duckVirtual = obscureObject.As<VirtualGenericsWithAttribute>();
+            var duckInterface = obscureObject.DuckCast<IGenericsWithAttribute>();
+            var duckAttribute = obscureObject.DuckCast<AbstractGenericsWithAttribute>();
+            var duckVirtual = obscureObject.DuckCast<VirtualGenericsWithAttribute>();
 
             Tuple<int, string> result;
 

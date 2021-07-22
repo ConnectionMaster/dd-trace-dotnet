@@ -1,4 +1,8 @@
-// ReSharper disable InconsistentNaming - Name is used for integration names
+// <copyright file="IntegrationIds.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 namespace Datadog.Trace.Configuration
 {
     internal enum IntegrationIds
@@ -6,6 +10,7 @@ namespace Datadog.Trace.Configuration
         HttpMessageHandler,
         HttpSocketsHandler,
         WinHttpHandler,
+        CurlHandler,
         AspNetCore,
         AdoNet,
         AspNet,
@@ -14,6 +19,8 @@ namespace Datadog.Trace.Configuration
         GraphQL,
         MongoDb,
         XUnit,
+        NUnit,
+        MsTestV2,
         Wcf,
         WebRequest,
         ElasticsearchNet5,
@@ -22,5 +29,10 @@ namespace Datadog.Trace.Configuration
         StackExchangeRedis,
         ServiceRemoting,
         RabbitMQ,
+        Msmq,
+        Kafka,
+        CosmosDb,
+        AwsSdk,
+        AwsSqs,
     }
 }

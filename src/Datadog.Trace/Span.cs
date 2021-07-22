@@ -1,3 +1,8 @@
+// <copyright file="Span.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Globalization;
 using System.Text;
@@ -17,7 +22,7 @@ namespace Datadog.Trace
     /// </summary>
     public class Span : IDisposable, ISpan
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<Span>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<Span>();
         private static readonly bool IsLogLevelDebugEnabled = Log.IsEnabled(LogEventLevel.Debug);
 
         private readonly object _lock = new object();
@@ -31,11 +36,10 @@ namespace Datadog.Trace
         {
             Tags = tags ?? new CommonTags();
             Context = context;
-            ServiceName = context.ServiceName;
             StartTime = start ?? Context.TraceContext.UtcNow;
 
             Log.Debug(
-                "Span started: [s_id: {0}, p_id: {1}, t_id: {2}]",
+                "Span started: [s_id: {SpanID}, p_id: {ParentId}, t_id: {TraceId}]",
                 SpanId,
                 Context.ParentId,
                 TraceId);
@@ -92,7 +96,9 @@ namespace Datadog.Trace
 
         internal bool IsFinished { get; private set; }
 
-        internal bool IsRootSpan => Context?.TraceContext?.RootSpan == this;
+        internal bool IsRootSpan => Context.TraceContext?.RootSpan == this;
+
+        internal bool IsTopLevel => Context.Parent == null || Context.Parent.ServiceName != ServiceName;
 
         /// <summary>
         /// Returns a <see cref="string" /> that represents this instance.
@@ -106,6 +112,7 @@ namespace Datadog.Trace
             sb.AppendLine($"TraceId: {Context.TraceId}");
             sb.AppendLine($"ParentId: {Context.ParentId}");
             sb.AppendLine($"SpanId: {Context.SpanId}");
+            sb.AppendLine($"Origin: {Context.Origin}");
             sb.AppendLine($"ServiceName: {ServiceName}");
             sb.AppendLine($"OperationName: {OperationName}");
             sb.AppendLine($"Resource: {ResourceName}");
@@ -128,13 +135,16 @@ namespace Datadog.Trace
         {
             if (IsFinished)
             {
-                Log.Debug("SetTag should not be called after the span was closed");
+                Log.Warning("SetTag should not be called after the span was closed");
                 return this;
             }
 
             // some tags have special meaning
             switch (key)
             {
+                case Trace.Tags.Origin:
+                    Context.Origin = value;
+                    break;
                 case Trace.Tags.SamplingPriority:
                     if (Enum.TryParse(value, out SamplingPriority samplingPriority) &&
                         Enum.IsDefined(typeof(SamplingPriority), samplingPriority))
@@ -197,7 +207,7 @@ namespace Datadog.Trace
                     }
                     else
                     {
-                        Log.Warning("Value {0} has incorrect format for tag {1}", value, Trace.Tags.Analytics);
+                        Log.Warning("Value {Value} has incorrect format for tag {TagName}", value, Trace.Tags.Analytics);
                     }
 
                     break;
@@ -223,7 +233,7 @@ namespace Datadog.Trace
                     }
                     else
                     {
-                        Log.Warning("Value {0} has incorrect format for tag {1}", value, Trace.Tags.Measured);
+                        Log.Warning("Value {Value} has incorrect format for tag {TagName}", value, Trace.Tags.Measured);
                     }
 
                     break;
@@ -307,6 +317,8 @@ namespace Datadog.Trace
             {
                 case Trace.Tags.SamplingPriority:
                     return ((int?)(Context.TraceContext?.SamplingPriority ?? Context.SamplingPriority))?.ToString();
+                case Trace.Tags.Origin:
+                    return Context.Origin;
                 default:
                     return Tags.GetTag(key);
             }
@@ -339,14 +351,8 @@ namespace Datadog.Trace
                 if (IsLogLevelDebugEnabled)
                 {
                     Log.Debug(
-                        "Span closed: [s_id: {0}, p_id: {1}, t_id: {2}] for (Service: {3}, Resource: {4}, Operation: {5}, Tags: [{6}])",
-                        SpanId,
-                        Context.ParentId,
-                        TraceId,
-                        ServiceName,
-                        ResourceName,
-                        OperationName,
-                        Tags);
+                        "Span closed: [s_id: {SpanId}, p_id: {ParentId}, t_id: {TraceId}] for (Service: {ServiceName}, Resource: {ResourceName}, Operation: {OperationName}, Tags: [{Tags}])",
+                        new object[] { SpanId, Context.ParentId, TraceId, ServiceName, ResourceName, OperationName, Tags });
                 }
             }
         }

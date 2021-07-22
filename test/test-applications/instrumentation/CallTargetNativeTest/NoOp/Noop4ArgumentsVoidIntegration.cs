@@ -11,16 +11,26 @@ namespace CallTargetNativeTest.NoOp
         public static CallTargetState OnMethodBegin<TTarget, TArg1, TArg2, TArg3, TArg4>(TTarget instance, TArg1 arg1, TArg2 arg2, TArg3 arg3, TArg4 arg4)
         {
             CallTargetState returnValue = CallTargetState.GetDefault();
-            string msg = $"{returnValue} {nameof(Noop4ArgumentsVoidIntegration)}.OnMethodBegin<{typeof(TTarget).FullName}, {typeof(TArg1).FullName}, {typeof(TArg2).FullName}, {typeof(TArg3).FullName}, {typeof(TArg4).FullName}>({instance}, {arg1}, {arg2}, {arg3}, {arg4})";
-            Console.WriteLine(msg);
+            Console.WriteLine($"ProfilerOK: BeginMethod(4)<{typeof(Noop4ArgumentsVoidIntegration)}, {typeof(TTarget)}, {typeof(TArg1)}, {typeof(TArg2)}, {typeof(TArg3)}, {typeof(TArg4)}>({instance}, {arg1}, {arg2}, {arg3}, {arg4})");
+            if (instance?.GetType().Name.Contains("ThrowOnBegin") == true)
+            {
+                Console.WriteLine("Exception thrown.");
+                throw new Exception();
+            }
+
             return returnValue;
         }
 
         public static CallTargetReturn OnMethodEnd<TTarget>(TTarget instance, Exception exception, CallTargetState state)
         {
             CallTargetReturn returnValue = CallTargetReturn.GetDefault();
-            string msg = $"{returnValue} {nameof(Noop4ArgumentsVoidIntegration)}.OnMethodEnd<{typeof(TTarget).FullName}>({instance}, {exception}, {state})";
-            Console.WriteLine(msg);
+            Console.WriteLine($"ProfilerOK: EndMethod(0)<{typeof(Noop4ArgumentsVoidIntegration)}, {typeof(TTarget)}>({instance}, {exception?.ToString() ?? "(null)"}, {state})");
+            if (instance?.GetType().Name.Contains("ThrowOnEnd") == true)
+            {
+                Console.WriteLine("Exception thrown.");
+                throw new Exception();
+            }
+
             return returnValue;
         }
     }

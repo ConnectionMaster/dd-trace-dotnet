@@ -1,7 +1,11 @@
+// <copyright file="HttpStreamRequest.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.IO;
 using System.Threading.Tasks;
-using Datadog.Trace.Agent.MessagePack;
 using Datadog.Trace.HttpOverStreams;
 using Datadog.Trace.HttpOverStreams.HttpContent;
 
@@ -34,34 +38,30 @@ namespace Datadog.Trace.Agent.Transports
             _headers.Add(name, value);
         }
 
-        public async Task<IApiResponse> PostAsync(Span[][] traces, FormatterResolverWrapper formatterResolver)
+        public async Task<IApiResponse> PostAsync(ArraySegment<byte> traces)
         {
             using (var bidirectionalStream = _streamFactory.GetBidirectionalStream())
             {
-                // buffer the entire contents for now so we can determine its size in bytes and avoid chunking.
-                // TODO: support chunked transfer encoding to avoid buffering the entire contents
-                var requestContentStream = new MemoryStream();
-                await CachedSerializer.Instance.SerializeAsync(requestContentStream, traces, formatterResolver).ConfigureAwait(false);
-                requestContentStream.Position = 0;
-
-                var content = new StreamContent(requestContentStream, requestContentStream.Length);
+                var content = new BufferContent(traces);
                 var request = new HttpRequest("POST", _uri.Host, _uri.PathAndQuery, _headers, content);
 
                 // send request, get response
                 var response = await _client.SendAsync(request, bidirectionalStream, bidirectionalStream).ConfigureAwait(false);
 
-                // buffer the entire contents for now
-                var responseContentStream = new MemoryStream();
-                await response.Content.CopyToAsync(responseContentStream, ResponseReadBufferSize).ConfigureAwait(false);
-                responseContentStream.Position = 0;
-
-                var contentLength = response.ContentLength;
-                if (contentLength != null && contentLength != responseContentStream.Length)
+                // Content-Length is required as we don't support chunked transfer
+                var contentLength = response.Content.Length;
+                if (!contentLength.HasValue)
                 {
-                    throw new Exception("Content length from http headers does not match content's actual length.");
+                    throw new Exception("Content-Length is required but was not provided");
                 }
 
-                return new HttpStreamResponse(response.StatusCode, responseContentStream.Length, response.GetContentEncoding(), responseContentStream);
+                // buffer the entire contents for now
+                var buffer = new byte[contentLength.Value];
+                var responseContentStream = new MemoryStream(buffer);
+                await response.Content.CopyToAsync(buffer).ConfigureAwait(false);
+                responseContentStream.Position = 0;
+
+                return new HttpStreamResponse(response.StatusCode, responseContentStream.Length, response.GetContentEncoding(), responseContentStream, response.Headers);
             }
         }
     }

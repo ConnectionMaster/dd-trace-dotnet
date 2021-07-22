@@ -1,8 +1,13 @@
+// <copyright file="MicrosoftDataSqlClientTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if !NET452
 using System.Collections.Generic;
 using System.Linq;
-using Datadog.Core.Tools;
 using Datadog.Trace.Configuration;
+using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
@@ -21,9 +26,13 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests.AdoNet
         {
             foreach (object[] item in PackageVersions.MicrosoftDataSqlClient)
             {
-                yield return item.Concat(new object[] { false, false, }).ToArray();
-                yield return item.Concat(new object[] { true, false, }).ToArray();
-                yield return item.Concat(new object[] { true, true, }).ToArray();
+                // Callsite instrumentation is not supported with 3.*
+                if (!item.Cast<string>().First().StartsWith("3"))
+                {
+                    yield return item.Concat(false);
+                }
+
+                yield return item.Concat(true);
             }
         }
 
@@ -31,25 +40,32 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests.AdoNet
         [MemberData(nameof(GetMicrosoftDataSqlClient))]
         [Trait("Category", "EndToEnd")]
         [Trait("RunOnWindows", "True")]
-        public void SubmitsTracesWithNetStandard(string packageVersion, bool enableCallTarget, bool enableInlining)
+        public void SubmitsTracesWithNetStandard(string packageVersion, bool enableCallTarget)
         {
-            SetCallTargetSettings(enableCallTarget, enableInlining);
+            SetCallTargetSettings(enableCallTarget);
 
-            // Note: The automatic instrumentation currently does not instrument on the generic wrappers
-            // due to an issue with constrained virtual method calls. This leads to an inconsistency where
-            // the .NET Core apps generate 4 more spans than .NET Framework apps (2 ExecuteReader calls *
-            // 2 interfaces: IDbCommand and IDbCommand-netstandard).
-            // Once this is fully supported, this will add another 2 complete groups for all frameworks instead
-            // of 4 extra spans on net461 and netcoreapp2.0+
+            // ALWAYS: 133 spans
+            // - SqlCommand: 21 spans (3 groups * 7 spans)
+            // - DbCommand:  42 spans (6 groups * 7 spans)
+            // - IDbCommand: 14 spans (2 groups * 7 spans)
+            // - DbCommand-netstandard:  42 spans (6 groups * 7 spans)
+            // - IDbCommand-netstandard: 14 spans (2 groups * 7 spans)
+            //
+            // CALLSITE: +4 spans
+            // - IDbCommandGenericConstrant<T>: 4 spans (2 group * 2 spans)
+            //
+            // CALLTARGET: +14 spans
+            // - IDbCommandGenericConstrant<SqlCommand>: 7 spans (1 group * 7 spans)
+            // - IDbCommandGenericConstrant<SqlCommand>-netstandard: 7 spans (1 group * 7 spans)
 #if NET461
-            var expectedSpanCount = 77; // 7 queries * 11 groups
+            var expectedSpanCount = 133;
 #else
-            var expectedSpanCount = 81; // 7 queries * 11 groups + 4 spans from generic wrapper on .NET Core
+            var expectedSpanCount = 137;
 #endif
 
             if (enableCallTarget)
             {
-                expectedSpanCount = 91; // CallTarget support instrumenting a constrained generic caller.
+                expectedSpanCount = 147;
             }
 
             const string dbType = "sql-server";
@@ -67,7 +83,8 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests.AdoNet
                 Assert.True(processResult.ExitCode >= 0, $"Process exited with code {processResult.ExitCode}");
 
                 var spans = agent.WaitForSpans(expectedSpanCount, operationName: expectedOperationName);
-                Assert.Equal(expectedSpanCount, spans.Count);
+                int actualSpanCount = spans.Where(s => s.ParentId.HasValue).Count(); // Remove unexpected DB spans from the calculation
+                Assert.Equal(expectedSpanCount, actualSpanCount);
 
                 foreach (var span in spans)
                 {
@@ -81,14 +98,13 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests.AdoNet
         }
 
         [Theory]
-        [InlineData(false, false)]
-        [InlineData(true, false)]
-        [InlineData(true, true)]
+        [InlineData(false)]
+        [InlineData(true)]
         [Trait("Category", "EndToEnd")]
         [Trait("RunOnWindows", "True")]
-        public void SpansDisabledByAdoNetExcludedTypes(bool enableCallTarget, bool enableInlining)
+        public void SpansDisabledByAdoNetExcludedTypes(bool enableCallTarget)
         {
-            SetCallTargetSettings(enableCallTarget, enableInlining);
+            SetCallTargetSettings(enableCallTarget);
 
             var totalSpanCount = 21;
 

@@ -1,10 +1,17 @@
+// <copyright file="Elasticsearch6Tests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Datadog.Core.Tools;
+using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
+
+#if !NET452
 
 namespace Datadog.Trace.ClrProfiler.IntegrationTests
 {
@@ -16,17 +23,29 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             SetServiceVersion("1.0.0");
         }
 
-        [Theory]
-        [MemberData(nameof(PackageVersions.ElasticSearch6), MemberType = typeof(PackageVersions))]
-        [Trait("Category", "EndToEnd")]
-        public void SubmitsTraces(string packageVersion)
+        public static System.Collections.Generic.IEnumerable<object[]> GetElasticsearch()
         {
+            foreach (var item in PackageVersions.ElasticSearch6)
+            {
+                yield return item.Concat(false);
+                yield return item.Concat(true);
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(GetElasticsearch))]
+        [Trait("Category", "EndToEnd")]
+        [Trait("Category", "ArmUnsupported")]
+        public void SubmitsTraces(string packageVersion, bool enableCallTarget)
+        {
+            SetCallTargetSettings(enableCallTarget);
+
             int agentPort = TcpPortProvider.GetOpenPort();
 
             using (var agent = new MockTracerAgent(agentPort))
             using (var processResult = RunSampleAndWaitForExit(agent.Port, packageVersion: packageVersion))
             {
-                Assert.True(processResult.ExitCode >= 0, $"Process exited with code {processResult.ExitCode}");
+                Assert.True(processResult.ExitCode == 0, $"Process exited with code {processResult.ExitCode}");
 
                 var expected = new List<string>();
 
@@ -147,3 +166,5 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
         }
     }
 }
+
+#endif

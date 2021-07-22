@@ -1,3 +1,8 @@
+// <copyright file="JsonConfigurationSource.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -14,7 +19,7 @@ namespace Datadog.Trace.Configuration
     /// </summary>
     public class JsonConfigurationSource : IConfigurationSource
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(JsonConfigurationSource));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(JsonConfigurationSource));
 
         private readonly JObject _configuration;
 
@@ -118,8 +123,34 @@ namespace Datadog.Trace.Configuration
         /// </remarks>
         /// <param name="key">The key that identifies the setting.</param>
         /// <returns><see cref="IDictionary{TKey, TValue}"/> containing all of the key-value pairs.</returns>
-        /// <exception cref="JsonReaderException">Thrown if the configuration value is not a valid JSON string.</exception>"
+        /// <exception cref="JsonReaderException">Thrown if the configuration value is not a valid JSON string.</exception>
         public IDictionary<string, string> GetDictionary(string key)
+        {
+            return GetDictionaryInternal(key, allowOptionalMappings: false);
+        }
+
+        /// <summary>
+        /// Gets a <see cref="ConcurrentDictionary{TKey, TValue}"/> containing all of the values.
+        /// </summary>
+        /// <remarks>
+        /// Example JSON where `globalTags` is the configuration key.
+        /// {
+        ///  "globalTags": {
+        ///     "name1": "value1",
+        ///     "name2": "value2"
+        ///     }
+        /// }
+        /// </remarks>
+        /// <param name="key">The key that identifies the setting.</param>
+        /// <param name="allowOptionalMappings">Determines whether to create dictionary entries when the input has no value mapping. This only applies to string values, not JSON objects</param>
+        /// <returns><see cref="IDictionary{TKey, TValue}"/> containing all of the key-value pairs.</returns>
+        /// <exception cref="JsonReaderException">Thrown if the configuration value is not a valid JSON string.</exception>
+        public IDictionary<string, string> GetDictionary(string key, bool allowOptionalMappings)
+        {
+            return GetDictionaryInternal(key, allowOptionalMappings);
+        }
+
+        private IDictionary<string, string> GetDictionaryInternal(string key, bool allowOptionalMappings)
         {
             var token = _configuration.SelectToken(key, errorWhenNoMatch: false);
             if (token == null)
@@ -137,12 +168,12 @@ namespace Datadog.Trace.Configuration
                 }
                 catch (Exception e)
                 {
-                    Log.Error(e, "Unable to parse configuration value for {0} as key-value pairs of strings.", key);
+                    Log.Error(e, "Unable to parse configuration value for {ConfigurationKey} as key-value pairs of strings.", key);
                     return null;
                 }
             }
 
-            return StringConfigurationSource.ParseCustomKeyValues(token.ToString());
+            return StringConfigurationSource.ParseCustomKeyValues(token.ToString(), allowOptionalMappings);
         }
     }
 }

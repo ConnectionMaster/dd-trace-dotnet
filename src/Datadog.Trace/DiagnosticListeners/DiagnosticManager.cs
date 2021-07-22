@@ -1,3 +1,8 @@
+// <copyright file="DiagnosticManager.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if !NETFRAMEWORK
 using System;
 using System.Collections.Generic;
@@ -10,7 +15,7 @@ namespace Datadog.Trace.DiagnosticListeners
 {
     internal sealed class DiagnosticManager : IDiagnosticManager, IObserver<DiagnosticListener>, IDisposable
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<DiagnosticManager>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<DiagnosticManager>();
 
         private readonly IEnumerable<DiagnosticObserver> _diagnosticObservers;
         private readonly List<IDisposable> _subscriptions = new List<IDisposable>();
@@ -34,7 +39,7 @@ namespace Datadog.Trace.DiagnosticListeners
         {
             if (_allListenersSubscription == null)
             {
-                Log.Verbose("Starting DiagnosticListener.AllListeners subscription");
+                Log.Debug("Starting DiagnosticListener.AllListeners subscription");
                 _allListenersSubscription = DiagnosticListener.AllListeners.Subscribe(this);
             }
         }
@@ -55,10 +60,10 @@ namespace Datadog.Trace.DiagnosticListeners
 
                 if (subscription != null)
                 {
-                    if (Log.IsEnabled(LogEventLevel.Verbose))
+                    if (Log.IsEnabled(LogEventLevel.Debug))
                     {
-                        Log.Verbose(
-                            "Subscriber '{0}' returned subscription for '{1}'",
+                        Log.Debug(
+                            "Subscriber '{SubscriberType}' returned subscription for '{ListenerName}'",
                             subscriber.GetType().Name,
                             listener.Name);
                     }
@@ -72,9 +77,9 @@ namespace Datadog.Trace.DiagnosticListeners
         {
             if (_allListenersSubscription != null)
             {
-                if (Log.IsEnabled(LogEventLevel.Verbose))
+                if (Log.IsEnabled(LogEventLevel.Debug))
                 {
-                    Log.Verbose("Stopping DiagnosticListener.AllListeners subscription");
+                    Log.Debug("Stopping DiagnosticListener.AllListeners subscription");
                 }
 
                 _allListenersSubscription.Dispose();

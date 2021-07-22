@@ -1,10 +1,17 @@
+// <copyright file="SpanTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Datadog.Trace.Agent;
 using Datadog.Trace.Configuration;
 using Datadog.Trace.Sampling;
+using FluentAssertions;
 using Moq;
 using Xunit;
 using Xunit.Abstractions;
@@ -38,7 +45,7 @@ namespace Datadog.Trace.Tests
 
             span.SetTag(key, value);
 
-            _writerMock.Verify(x => x.WriteTrace(It.IsAny<Span[]>()), Times.Never);
+            _writerMock.Verify(x => x.WriteTrace(It.IsAny<ArraySegment<Span>>()), Times.Never);
             Assert.Equal(span.GetTag(key), value);
         }
 
@@ -61,7 +68,7 @@ namespace Datadog.Trace.Tests
             await Task.Delay(TimeSpan.FromMilliseconds(1));
             span.Finish();
 
-            _writerMock.Verify(x => x.WriteTrace(It.IsAny<Span[]>()), Times.Once);
+            _writerMock.Verify(x => x.WriteTrace(It.IsAny<ArraySegment<Span>>()), Times.Once);
             Assert.True(span.Duration > TimeSpan.Zero);
         }
 
@@ -89,51 +96,69 @@ namespace Datadog.Trace.Tests
             Assert.Equal(TimeSpan.Zero, span.Duration);
         }
 
-        [Theory]
-        [InlineData(3)]
-        [InlineData(10)]
-        [InlineData(100)]
-        public void Accurate_Duration(int minimumSleepMilliseconds)
+        [Fact]
+        public void Accurate_Duration()
         {
-            // TODO: refactor how we measure time so we can lower this threshold
+            // Check that span has the same precision as stopwatch
+            // The reasoning behind the test is: let's imagine that Span uses DateTime internally, with a 15 ms precision.
+            // Depending on how it's implemented, for a time of 5 ms it will report either 0 ms or 15 ms.
+            // If the former, then the first assertion will fail.If the latter, then the second assertion will fail.
             const int iterations = 10;
-            const int maxDifference = 15;
-            TimeSpan totalStopwatchTime = TimeSpan.Zero;
-            TimeSpan totalSpanTime = TimeSpan.Zero;
-            Span span;
-            var stopwatch = new Stopwatch();
 
-            // execute once to ensure JIT compilation
-            using (span = _tracer.StartSpan("Operation"))
+            // Sleeps just the right amount of time to be sure we do not exceed the precision of the stopwatch
+            // Not using Thread.Sleep(1) because it has the same precision as DateTime, so it could skew the test
+            static void Sleep()
             {
-                stopwatch.Restart();
-                Thread.Sleep(1);
-                var spanMilliseconds = span.Duration.TotalMilliseconds;
-                var elapsedMilliseconds = stopwatch.ElapsedMilliseconds;
+                var timestamp = Stopwatch.GetTimestamp();
+
+                while (timestamp == Stopwatch.GetTimestamp())
+                {
+                    Thread.SpinWait(1);
+                }
             }
 
-            // execute multiple times and average the results
-            for (int x = 0; x < iterations; x++)
+            var stopwatch = new Stopwatch();
+
+            for (int i = 0; i < iterations; i++)
             {
+                Span span;
+
                 using (span = _tracer.StartSpan("Operation"))
                 {
                     stopwatch.Restart();
-                    Thread.Sleep(minimumSleepMilliseconds);
-                    totalStopwatchTime += stopwatch.Elapsed;
+                    Sleep();
+                    stopwatch.Stop();
                 }
 
-                totalSpanTime += span.Duration;
-            }
+                span.Duration.Should().BeGreaterOrEqualTo(stopwatch.Elapsed);
 
-            var avgStopwatch = totalStopwatchTime.TotalMilliseconds / iterations;
-            var avgSpan = totalSpanTime.TotalMilliseconds / iterations;
-            var stopwatchSpanDiff = Math.Abs(avgSpan - avgStopwatch);
-            // The difference should be less than the threshold
-            _output.WriteLine($"Average elapsed time: {avgStopwatch:0.0} ms");
-            _output.WriteLine($"Average span time: {avgSpan:0.0} ms");
-            Assert.True(
-                stopwatchSpanDiff < maxDifference,
-                $"Span duration difference ({stopwatchSpanDiff}ms) outside of allowed threshold {maxDifference}ms. Expected average: {avgStopwatch}ms, actual average: {avgSpan}ms");
+                stopwatch.Restart();
+                using (span = _tracer.StartSpan("Operation"))
+                {
+                    Sleep();
+                }
+
+                stopwatch.Stop();
+
+                span.Duration.Should().BeLessOrEqualTo(stopwatch.Elapsed);
+            }
+        }
+
+        [Fact]
+        public void TopLevelSpans()
+        {
+            var spans = new List<(Scope Scope, bool IsTopLevel)>();
+
+            spans.Add((_tracer.StartActive("Root", serviceName: "root"), true));
+            spans.Add((_tracer.StartActive("Child1", serviceName: "root"), false));
+            spans.Add((_tracer.StartActive("Child2", serviceName: "child"), true));
+            spans.Add((_tracer.StartActive("Child3", serviceName: "child"), false));
+            spans.Add((_tracer.StartActive("Child4", serviceName: "root"), true));
+
+            foreach (var (scope, expectedResult) in spans)
+            {
+                scope.Span.Should().Match<Span>(s => s.IsTopLevel == expectedResult);
+            }
         }
     }
 }

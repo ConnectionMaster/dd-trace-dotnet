@@ -1,18 +1,22 @@
+// <copyright file="EnvironmentHelper.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using Datadog.Core.Tools;
 using Xunit.Abstractions;
 
 namespace Datadog.Trace.TestHelpers
 {
     public class EnvironmentHelper
     {
-        private static readonly Assembly EntryAssembly = Assembly.GetEntryAssembly();
         private static readonly Assembly ExecutingAssembly = Assembly.GetExecutingAssembly();
         private static readonly string RuntimeFrameworkDescription = RuntimeInformation.FrameworkDescription.ToLower();
 
@@ -25,8 +29,6 @@ namespace Datadog.Trace.TestHelpers
         private readonly string _runtime;
         private readonly bool _isCoreClr;
         private readonly string _samplesDirectory;
-        private readonly Type _anchorType;
-        private readonly Assembly _anchorAssembly;
         private readonly TargetFrameworkAttribute _targetFramework;
 
         private bool _requiresProfiling;
@@ -37,14 +39,12 @@ namespace Datadog.Trace.TestHelpers
             string sampleName,
             Type anchorType,
             ITestOutputHelper output,
-            string samplesDirectory = "test/test-applications/integrations",
+            string samplesDirectory = null,
             bool prependSamplesToAppName = true,
             bool requiresProfiling = true)
         {
             SampleName = sampleName;
-            _samplesDirectory = samplesDirectory ?? "test/test-applications/integrations";
-            _anchorType = anchorType;
-            _anchorAssembly = Assembly.GetAssembly(_anchorType);
+            _samplesDirectory = samplesDirectory ?? Path.Combine("test", "test-applications", "integrations");
             _targetFramework = Assembly.GetAssembly(anchorType).GetCustomAttribute<TargetFrameworkAttribute>();
             _output = output;
             _requiresProfiling = requiresProfiling;
@@ -75,25 +75,14 @@ namespace Datadog.Trace.TestHelpers
 
         public string FullSampleName => $"{_appNamePrepend}{SampleName}";
 
-        public static EnvironmentHelper NonProfiledHelper(Type anchor, string appName, string directory)
+        public static bool IsNet5()
         {
-            return new EnvironmentHelper(
-                sampleName: appName,
-                anchorType: anchor,
-                output: null,
-                samplesDirectory: directory,
-                prependSamplesToAppName: false,
-                requiresProfiling: false);
-        }
-
-        public static string GetExecutingAssembly()
-        {
-            return ExecutingAssembly.Location;
+            return Environment.Version.Major >= 5;
         }
 
         public static bool IsCoreClr()
         {
-            return RuntimeFrameworkDescription.Contains("core") || Environment.Version.Major >= 5;
+            return RuntimeFrameworkDescription.Contains("core") || IsNet5();
         }
 
         public static string GetRuntimeIdentifier()
@@ -106,6 +95,29 @@ namespace Datadog.Trace.TestHelpers
         public static string GetSolutionDirectory()
         {
             return EnvironmentTools.GetSolutionDirectory();
+        }
+
+        public static IEnumerable<string> GetProfilerPathCandidates(string sampleApplicationOutputDirectory)
+        {
+            string extension = EnvironmentTools.GetOS() switch
+            {
+                "win" => "dll",
+                "linux" => "so",
+                "osx" => "dylib",
+                _ => throw new PlatformNotSupportedException()
+            };
+
+            string fileName = $"Datadog.Trace.ClrProfiler.Native.{extension}";
+
+            var relativePath = Path.Combine("profiler-lib", fileName);
+
+            if (sampleApplicationOutputDirectory != null)
+            {
+                yield return Path.Combine(sampleApplicationOutputDirectory, relativePath);
+            }
+
+            yield return Path.Combine(GetExecutingProjectBin(), relativePath);
+            yield return Path.Combine(GetProfilerProjectBin(), fileName);
         }
 
         public static void ClearProfilerEnvironmentVariables()
@@ -144,10 +156,9 @@ namespace Datadog.Trace.TestHelpers
             int agentPort,
             int aspNetCorePort,
             int? statsdPort,
-            string processPath,
-            StringDictionary environmentVariables)
+            StringDictionary environmentVariables,
+            string processToProfile = null)
         {
-            var processName = processPath;
             string profilerEnabled = _requiresProfiling ? "1" : "0";
             string profilerPath;
 
@@ -168,8 +179,6 @@ namespace Datadog.Trace.TestHelpers
                 profilerPath = GetProfilerPath();
                 environmentVariables["COR_PROFILER_PATH"] = profilerPath;
                 environmentVariables["DD_DOTNET_TRACER_HOME"] = Path.GetDirectoryName(profilerPath);
-
-                processName = Path.GetFileName(processPath);
             }
 
             if (DebugModeEnabled)
@@ -177,7 +186,10 @@ namespace Datadog.Trace.TestHelpers
                 environmentVariables["DD_TRACE_DEBUG"] = "1";
             }
 
-            environmentVariables["DD_PROFILER_PROCESSES"] = processName;
+            if (!string.IsNullOrEmpty(processToProfile))
+            {
+                environmentVariables["DD_PROFILER_PROCESSES"] = Path.GetFileName(processToProfile);
+            }
 
             string integrations = string.Join(";", GetIntegrationsFilePaths());
             environmentVariables["DD_INTEGRATIONS"] = integrations;
@@ -200,6 +212,9 @@ namespace Datadog.Trace.TestHelpers
                     environmentVariables[name] = value;
                 }
             }
+
+            // set consistent env name (can be overwritten by custom environment variable)
+            environmentVariables["DD_ENV"] = "integration_tests";
 
             foreach (var key in CustomEnvironmentVariables.Keys)
             {
@@ -239,7 +254,7 @@ namespace Datadog.Trace.TestHelpers
                     _output?.WriteLine($"Attempt 2: Unable to find integrations at {_integrationsFileLocation}.");
                     // One last attempt at the solution root
                     _integrationsFileLocation = Path.Combine(
-                        GetSolutionDirectory(),
+                        EnvironmentTools.GetSolutionDirectory(),
                         fileName);
                 }
 
@@ -261,48 +276,19 @@ namespace Datadog.Trace.TestHelpers
         {
             if (_profilerFileLocation == null)
             {
-                string extension = EnvironmentTools.IsWindows()
-                                       ? "dll"
-                                       : "so";
+                var paths = GetProfilerPathCandidates(GetSampleApplicationOutputDirectory()).ToArray();
 
-                string fileName = $"Datadog.Trace.ClrProfiler.Native.{extension}";
-
-                var directory = GetSampleApplicationOutputDirectory();
-
-                var relativePath = Path.Combine(
-                    "profiler-lib",
-                    fileName);
-
-                _profilerFileLocation = Path.Combine(
-                    directory,
-                    relativePath);
-
-                // TODO: get rid of the fallback options when we have a consistent convention
-
-                if (!File.Exists(_profilerFileLocation))
+                foreach (var candidate in paths)
                 {
-                    _output?.WriteLine($"Attempt 1: Unable to find profiler at {_profilerFileLocation}.");
-                    // Let's try the executing directory, as dotnet publish ignores the Copy attributes we currently use
-                    _profilerFileLocation = Path.Combine(
-                        GetExecutingProjectBin(),
-                        relativePath);
+                    if (File.Exists(candidate))
+                    {
+                        _profilerFileLocation = candidate;
+                        _output?.WriteLine($"Found profiler at {_profilerFileLocation}.");
+                        return candidate;
+                    }
                 }
 
-                if (!File.Exists(_profilerFileLocation))
-                {
-                    _output?.WriteLine($"Attempt 2: Unable to find profiler at {_profilerFileLocation}.");
-                    // One last attempt at the actual native project directory
-                    _profilerFileLocation = Path.Combine(
-                        GetProfilerProjectBin(),
-                        fileName);
-                }
-
-                if (!File.Exists(_profilerFileLocation))
-                {
-                    throw new Exception($"Attempt 3: Unable to find profiler at {_profilerFileLocation}");
-                }
-
-                _output?.WriteLine($"Found profiler at {_profilerFileLocation}.");
+                throw new Exception($"Unable to find profiler in any of the paths: {string.Join("; ", paths)}");
             }
 
             return _profilerFileLocation;
@@ -310,14 +296,26 @@ namespace Datadog.Trace.TestHelpers
 
         public string GetSampleApplicationPath(string packageVersion = "", string framework = "")
         {
+            var appFileName = GetSampleApplicationFileName();
+            var sampleAppPath = Path.Combine(GetSampleApplicationOutputDirectory(packageVersion: packageVersion, framework: framework), appFileName);
+            return sampleAppPath;
+        }
+
+        public string GetSampleApplicationFileName()
+        {
             string extension = "exe";
 
-            if (EnvironmentHelper.IsCoreClr() || _samplesDirectory.Contains("aspnet"))
+            if (IsCoreClr() || _samplesDirectory.Contains("aspnet"))
             {
                 extension = "dll";
             }
 
-            var appFileName = $"{FullSampleName}.{extension}";
+            return $"{FullSampleName}.{extension}";
+        }
+
+        public string GetTestCommandForSampleApplicationPath(string packageVersion = "", string framework = "")
+        {
+            var appFileName = $"{FullSampleName}.dll";
             var sampleAppPath = Path.Combine(GetSampleApplicationOutputDirectory(packageVersion: packageVersion, framework: framework), appFileName);
             return sampleAppPath;
         }
@@ -328,11 +326,11 @@ namespace Datadog.Trace.TestHelpers
 
             if (_samplesDirectory.Contains("aspnet"))
             {
-                executor = $"C:\\Program Files{(Environment.Is64BitProcess ? string.Empty : " (x86)")}\\IIS Express\\iisexpress.exe";
+                executor = GetIisExpressPath();
             }
             else if (IsCoreClr())
             {
-                executor = EnvironmentTools.IsWindows() ? "dotnet.exe" : "dotnet";
+                executor = GetDotnetExe();
             }
             else
             {
@@ -348,9 +346,52 @@ namespace Datadog.Trace.TestHelpers
             return executor;
         }
 
+        public string GetIisExpressPath()
+            => $"C:\\Program Files{(Environment.Is64BitProcess ? string.Empty : " (x86)")}\\IIS Express\\iisexpress.exe";
+
+        public string GetDotNetTest()
+        {
+            if (EnvironmentTools.IsWindows() && !IsCoreClr())
+            {
+                string filePattern = @"C:\Program Files (x86)\Microsoft Visual Studio\{0}\{1}\Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe";
+                List<Tuple<string, string>> lstTuple = new List<Tuple<string, string>>
+                {
+                    Tuple.Create("2019", "Enterprise"),
+                    Tuple.Create("2019", "Professional"),
+                    Tuple.Create("2019", "Community"),
+                    Tuple.Create("2017", "Enterprise"),
+                    Tuple.Create("2017", "Professional"),
+                    Tuple.Create("2017", "Community"),
+                };
+
+                foreach (Tuple<string, string> tuple in lstTuple)
+                {
+                    var tryPath = string.Format(filePattern, tuple.Item1, tuple.Item2);
+                    if (File.Exists(tryPath))
+                    {
+                        return tryPath;
+                    }
+                }
+            }
+
+            return GetDotnetExe();
+        }
+
+        public string GetDotnetExe()
+            => (EnvironmentTools.IsWindows(), Environment.Is64BitProcess) switch
+            {
+                (true, true) => "dotnet.exe",
+                (true, false) => Environment.GetEnvironmentVariable("DOTNET_EXE_32") ??
+                                 Path.Combine(
+                                     Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                                     "dotnet",
+                                     "dotnet.exe"),
+                _ =>  "dotnet",
+            };
+
         public string GetSampleProjectDirectory()
         {
-            var solutionDirectory = GetSolutionDirectory();
+            var solutionDirectory = EnvironmentTools.GetSolutionDirectory();
             var projectDir = Path.Combine(
                 solutionDirectory,
                 _samplesDirectory,
@@ -358,7 +399,7 @@ namespace Datadog.Trace.TestHelpers
             return projectDir;
         }
 
-        public string GetSampleApplicationOutputDirectory(string packageVersion = "", string framework = "")
+        public string GetSampleApplicationOutputDirectory(string packageVersion = "", string framework = "", bool usePublishFolder = true)
         {
             var targetFramework = string.IsNullOrEmpty(framework) ? GetTargetFramework() : framework;
             var binDir = Path.Combine(
@@ -369,7 +410,10 @@ namespace Datadog.Trace.TestHelpers
 
             if (_samplesDirectory.Contains("aspnet"))
             {
-                outputDir = binDir;
+                outputDir = Path.Combine(
+                    binDir,
+                    EnvironmentTools.GetBuildConfiguration(),
+                    "publish");
             }
             else if (EnvironmentTools.GetOS() == "win")
             {
@@ -380,7 +424,7 @@ namespace Datadog.Trace.TestHelpers
                     EnvironmentTools.GetBuildConfiguration(),
                     targetFramework);
             }
-            else
+            else if (usePublishFolder)
             {
                 outputDir = Path.Combine(
                     binDir,
@@ -388,6 +432,14 @@ namespace Datadog.Trace.TestHelpers
                     EnvironmentTools.GetBuildConfiguration(),
                     targetFramework,
                     "publish");
+            }
+            else
+            {
+                outputDir = Path.Combine(
+                    binDir,
+                    packageVersion,
+                    EnvironmentTools.GetBuildConfiguration(),
+                    targetFramework);
             }
 
             return outputDir;
@@ -408,10 +460,10 @@ namespace Datadog.Trace.TestHelpers
             return $"net{_major}{_minor}{_patch ?? string.Empty}";
         }
 
-        private string GetProfilerProjectBin()
+        private static string GetProfilerProjectBin()
         {
             return Path.Combine(
-                GetSolutionDirectory(),
+                EnvironmentTools.GetSolutionDirectory(),
                 "src",
                 "Datadog.Trace.ClrProfiler.Native",
                 "bin",
@@ -419,7 +471,7 @@ namespace Datadog.Trace.TestHelpers
                 EnvironmentTools.GetPlatform().ToLower());
         }
 
-        private string GetExecutingProjectBin()
+        private static string GetExecutingProjectBin()
         {
             return Path.GetDirectoryName(ExecutingAssembly.Location);
         }

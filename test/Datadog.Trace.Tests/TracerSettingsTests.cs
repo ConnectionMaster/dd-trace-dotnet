@@ -1,3 +1,8 @@
+// <copyright file="TracerSettingsTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -73,7 +78,7 @@ namespace Datadog.Trace.Tests
 
             Assert.Equal(areTracesEnabled, tracerSettings.TraceEnabled);
 
-            _writerMock.ResetCalls();
+            _writerMock.Invocations.Clear();
 
             var tracer = new Tracer(tracerSettings, _writerMock.Object, _samplerMock.Object, scopeManager: null, statsd: null);
             var span = tracer.StartSpan("TestTracerDisabled");
@@ -81,7 +86,7 @@ namespace Datadog.Trace.Tests
 
             var assertion = areTracesEnabled ? Times.Once() : Times.Never();
 
-            _writerMock.Verify(w => w.WriteTrace(It.IsAny<Span[]>()), assertion);
+            _writerMock.Verify(w => w.WriteTrace(It.IsAny<ArraySegment<Span>>()), assertion);
         }
 
         [Theory]
@@ -100,10 +105,24 @@ namespace Datadog.Trace.Tests
         }
 
         [Theory]
+        [InlineData("a,b,c,d,,f", new[] { "a", "b", "c", "d", "f" })]
+        [InlineData(" a, b ,c, ,,f ", new[] { "a", "b", "c", "f" })]
+        [InlineData("a,b, c ,d,      e      ,f  ", new[] { "a", "b", "c", "d", "e", "f" })]
+        [InlineData("a,b,c,d,e,f", new[] { "a", "b", "c", "d", "e", "f" })]
+        [InlineData("", new string[0])]
+        public void ParseStringArraySplit(string input, string[] expected)
+        {
+            var tracerSettings = new TracerSettings();
+            var result = tracerSettings.TrimSplitString(input, ',').ToArray();
+            Assert.Equal(expected: expected, actual: result);
+        }
+
+        [Theory]
         [InlineData("404 -401, 419,344_ 23-302, 201,_5633-55, 409-411", "401,402,403,404,419,201,409,410,411")]
         [InlineData("-33, 500-503,113#53,500-502-200,456_2, 590-590", "500,501,502,503,590")]
         [InlineData("800", "")]
         [InlineData("599-605,700-800", "599")]
+        [InlineData("400-403, 500-501-234, s342, 500-503", "400,401,402,403,500,501,502,503")]
         public void ParseHttpCodes(string original, string expected)
         {
             var tracerSettings = new TracerSettings();

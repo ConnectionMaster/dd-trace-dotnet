@@ -5,7 +5,16 @@
 #include <sstream>
 #include <string>
 
-namespace trace {
+#ifdef _WIN32
+#define WStr(value) L##value
+#define WStrLen(value) (size_t) wcslen(value)
+#else
+#define WStr(value) u##value
+#define WStrLen(value) (size_t) std::char_traits<char16_t>::length(value)
+#endif
+
+namespace trace
+{
 
 typedef std::basic_string<WCHAR> WSTRING;
 
@@ -21,9 +30,6 @@ std::string ToString(const WSTRING& wstr);
 WSTRING ToWSTRING(const std::string& str);
 WSTRING ToWSTRING(const uint64_t i);
 
-WCHAR operator"" _W(const char c);
-WSTRING operator"" _W(const char* arr, size_t size);
+} // namespace trace
 
-}  // namespace trace
-
-#endif  // DD_CLR_PROFILER_STRING_H_
+#endif // DD_CLR_PROFILER_STRING_H_

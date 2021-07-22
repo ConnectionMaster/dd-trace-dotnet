@@ -1,3 +1,8 @@
+// <copyright file="AzureAppServices.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections;
 using Datadog.Trace.ExtensionMethods;
@@ -72,7 +77,7 @@ namespace Datadog.Trace.PlatformHelpers
         /// </summary>
         internal const string OperatingSystemKey = "WEBSITE_OS";
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(AzureAppServices));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(AzureAppServices));
 
         static AzureAppServices()
         {
@@ -131,16 +136,20 @@ namespace Datadog.Trace.PlatformHelpers
                     }
 
                     Runtime = FrameworkDescription.Instance.Name;
+
+                    DebugModeEnabled = GetVariableIfExists(Configuration.ConfigurationKeys.DebugEnabled, environmentVariables)?.ToBoolean() ?? true;
                 }
             }
             catch (Exception ex)
             {
                 IsUnsafeToTrace = true;
-                Log.SafeLogError(ex, "Unable to initialize AzureAppServices metadata.");
+                Log.Error(ex, "Unable to initialize AzureAppServices metadata.");
             }
         }
 
         public static AzureAppServices Metadata { get; set; }
+
+        public bool DebugModeEnabled { get; }
 
         public bool IsRelevant { get; }
 
@@ -174,6 +183,8 @@ namespace Datadog.Trace.PlatformHelpers
 
         public string Runtime { get; }
 
+        public string DefaultHttpClientExclusions { get; } = "logs.datadoghq, services.visualstudio, applicationinsights.azure, blob.core.windows.net/azure-webjobs, azurewebsites.net/admin".ToUpperInvariant();
+
         private string CompileResourceId()
         {
             string resourceId = null;
@@ -184,19 +195,19 @@ namespace Datadog.Trace.PlatformHelpers
                 if (SubscriptionId == null)
                 {
                     success = false;
-                    Log.Warning("Could not successfully retrieve the subscription ID from variable: {0}", WebsiteOwnerNameKey);
+                    Log.Warning("Could not successfully retrieve the subscription ID from variable: {Variable}", WebsiteOwnerNameKey);
                 }
 
                 if (SiteName == null)
                 {
                     success = false;
-                    Log.Warning("Could not successfully retrieve the deployment ID from variable: {0}", SiteNameKey);
+                    Log.Warning("Could not successfully retrieve the deployment ID from variable: {Variable}", SiteNameKey);
                 }
 
                 if (ResourceGroup == null)
                 {
                     success = false;
-                    Log.Warning("Could not successfully retrieve the resource group name from variable: {0}", ResourceGroupKey);
+                    Log.Warning("Could not successfully retrieve the resource group name from variable: {Variable}", ResourceGroupKey);
                 }
 
                 if (success)
@@ -206,7 +217,7 @@ namespace Datadog.Trace.PlatformHelpers
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Could not successfully setup the resource ID for Azure App Services.");
+                Log.Error(ex, "Could not successfully setup the resource ID for Azure App Services.");
             }
 
             return resourceId;
@@ -228,7 +239,7 @@ namespace Datadog.Trace.PlatformHelpers
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Could not successfully retrieve the subscription ID for Azure App Services.");
+                Log.Error(ex, "Could not successfully retrieve the subscription ID for Azure App Services.");
             }
 
             return null;

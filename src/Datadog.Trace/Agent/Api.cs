@@ -1,8 +1,12 @@
+// <copyright file="Api.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Threading.Tasks;
-using Datadog.Trace.Agent.MessagePack;
 using Datadog.Trace.Agent.Transports;
 using Datadog.Trace.DogStatsd;
 using Datadog.Trace.Logging;
@@ -16,32 +20,39 @@ namespace Datadog.Trace.Agent
     {
         private const string TracesPath = "/v0.4/traces";
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<Api>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<Api>();
 
         private readonly IApiRequestFactory _apiRequestFactory;
         private readonly IDogStatsd _statsd;
-        private readonly FormatterResolverWrapper _formatterResolver = new FormatterResolverWrapper(SpanFormatterResolver.Instance);
         private readonly string _containerId;
         private readonly Uri _tracesEndpoint;
+        private readonly IDatadogTracer _tracer;
         private string _cachedResponse;
 
         public Api(Uri baseEndpoint, IApiRequestFactory apiRequestFactory, IDogStatsd statsd)
+            : this(baseEndpoint, apiRequestFactory, statsd, tracer: null)
+        {
+        }
+
+        // Internal constructor used for tests
+        internal Api(Uri baseEndpoint, IApiRequestFactory apiRequestFactory, IDogStatsd statsd, IDatadogTracer tracer)
         {
             Log.Debug("Creating new Api");
+            _tracer = tracer;
             _tracesEndpoint = new Uri(baseEndpoint, TracesPath);
             _statsd = statsd;
             _containerId = ContainerMetadata.GetContainerId();
             _apiRequestFactory = apiRequestFactory ?? CreateRequestFactory();
         }
 
-        public async Task<bool> SendTracesAsync(Span[][] traces)
+        public async Task<bool> SendTracesAsync(ArraySegment<byte> traces, int numberOfTraces)
         {
             // retry up to 5 times with exponential back-off
             var retryLimit = 5;
             var retryCount = 1;
             var sleepDuration = 100; // in milliseconds
 
-            Log.Debug("Sending {0} traces to the DD agent", traces.Length);
+            Log.Debug<int>("Sending {Count} traces to the DD agent", numberOfTraces);
 
             while (true)
             {
@@ -53,14 +64,12 @@ namespace Datadog.Trace.Agent
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(ex, "An error occurred while generating http request to send traces to the agent at {0}", _apiRequestFactory.Info(_tracesEndpoint));
+                    Log.Error(ex, "An error occurred while generating http request to send traces to the agent at {AgentEndpoint}", _apiRequestFactory.Info(_tracesEndpoint));
                     return false;
                 }
 
                 // Set additional headers
-                request.AddHeader(AgentHttpHeaderNames.TraceCount, traces.Length.ToString());
-                request.AddHeader(AgentHttpHeaderNames.LanguageInterpreter, FrameworkDescription.Instance.Name);
-                request.AddHeader(AgentHttpHeaderNames.LanguageVersion, FrameworkDescription.Instance.ProductVersion);
+                request.AddHeader(AgentHttpHeaderNames.TraceCount, numberOfTraces.ToString());
 
                 if (_containerId != null)
                 {
@@ -73,7 +82,7 @@ namespace Datadog.Trace.Agent
 
                 try
                 {
-                    success = await SendTracesAsync(traces, request, isFinalTry).ConfigureAwait(false);
+                    success = await SendTracesAsync(traces, numberOfTraces, request, isFinalTry).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -81,7 +90,7 @@ namespace Datadog.Trace.Agent
 #if DEBUG
                     if (ex.InnerException is InvalidOperationException ioe)
                     {
-                        Log.Error(ex, "An error occurred while sending {0} traces to the agent at {1}", traces.Length, _apiRequestFactory.Info(_tracesEndpoint));
+                        Log.Error<int, string>(ex, "An error occurred while sending {Count} traces to the agent at {AgentEndpoint}", numberOfTraces, _apiRequestFactory.Info(_tracesEndpoint));
                         return false;
                     }
 #endif
@@ -93,7 +102,7 @@ namespace Datadog.Trace.Agent
                     if (isFinalTry)
                     {
                         // stop retrying
-                        Log.Error(exception, "An error occurred while sending {0} traces to the agent at {1}", traces.Length, _apiRequestFactory.Info(_tracesEndpoint));
+                        Log.Error<int, string>(exception, "An error occurred while sending {Count} traces to the agent at {AgentEndpoint}", numberOfTraces, _apiRequestFactory.Info(_tracesEndpoint));
                         return false;
                     }
 
@@ -114,7 +123,7 @@ namespace Datadog.Trace.Agent
 
                     if (isSocketException)
                     {
-                        Log.Debug(exception, "Unable to communicate with the trace agent at {0}", _apiRequestFactory.Info(_tracesEndpoint));
+                        Log.Debug(exception, "Unable to communicate with the trace agent at {AgentEndpoint}", _apiRequestFactory.Info(_tracesEndpoint));
                     }
 
                     // Execute retry delay
@@ -125,7 +134,7 @@ namespace Datadog.Trace.Agent
                     continue;
                 }
 
-                Log.Debug("Successfully sent {0} traces to the DD agent", traces.Length);
+                Log.Debug<int>("Successfully sent {Count} traces to the DD agent", numberOfTraces);
                 return true;
             }
         }
@@ -133,15 +142,15 @@ namespace Datadog.Trace.Agent
         private static IApiRequestFactory CreateRequestFactory()
         {
 #if NETCOREAPP
-            Log.Information("Using {0} for trace transport.", nameof(HttpClientRequestFactory));
+            Log.Information("Using {FactoryType} for trace transport.", nameof(HttpClientRequestFactory));
             return new HttpClientRequestFactory();
 #else
-            Log.Information("Using {0} for trace transport.", nameof(ApiWebRequestFactory));
+            Log.Information("Using {FactoryType} for trace transport.", nameof(ApiWebRequestFactory));
             return new ApiWebRequestFactory();
 #endif
         }
 
-        private async Task<bool> SendTracesAsync(Span[][] traces, IApiRequest request, bool finalTry)
+        private async Task<bool> SendTracesAsync(ArraySegment<byte> traces, int numberOfTraces, IApiRequest request, bool finalTry)
         {
             IApiResponse response = null;
 
@@ -150,7 +159,7 @@ namespace Datadog.Trace.Agent
                 try
                 {
                     _statsd?.Increment(TracerMetricNames.Api.Requests);
-                    response = await request.PostAsync(traces, _formatterResolver).ConfigureAwait(false);
+                    response = await request.PostAsync(traces).ConfigureAwait(false);
                 }
                 catch
                 {
@@ -177,11 +186,11 @@ namespace Datadog.Trace.Agent
                         try
                         {
                             string responseContent = await response.ReadAsStringAsync().ConfigureAwait(false);
-                            Log.Error("Failed to submit traces with status code {0} and message: {1}", response.StatusCode, responseContent);
+                            Log.Error<int, string>("Failed to submit traces with status code {StatusCode} and message: {ResponseContent}", response.StatusCode, responseContent);
                         }
                         catch (Exception ex)
                         {
-                            Log.Error(ex, "Unable to read response for failed request with status code {0}", response.StatusCode);
+                            Log.Error<int>(ex, "Unable to read response for failed request with status code {StatusCode}", response.StatusCode);
                         }
                     }
 
@@ -190,6 +199,15 @@ namespace Datadog.Trace.Agent
 
                 try
                 {
+                    var tracer = _tracer ?? Tracer.Instance;
+
+                    if (tracer.AgentVersion == null)
+                    {
+                        var version = response.GetHeader(AgentHttpHeaderNames.AgentVersion);
+
+                        tracer.AgentVersion = version ?? string.Empty;
+                    }
+
                     if (response.ContentLength != 0 && Tracer.Instance.Sampler != null)
                     {
                         var responseContent = await response.ReadAsStringAsync().ConfigureAwait(false);
@@ -198,7 +216,7 @@ namespace Datadog.Trace.Agent
                         {
                             var apiResponse = JsonConvert.DeserializeObject<ApiResponse>(responseContent);
 
-                            Tracer.Instance.Sampler.SetDefaultSampleRates(apiResponse?.RateByService);
+                            tracer.Sampler.SetDefaultSampleRates(apiResponse?.RateByService);
 
                             _cachedResponse = responseContent;
                         }
@@ -206,7 +224,7 @@ namespace Datadog.Trace.Agent
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(ex, "Traces sent successfully to the Agent at {0}, but an error occurred deserializing the response.", _apiRequestFactory.Info(_tracesEndpoint));
+                    Log.Error(ex, "Traces sent successfully to the Agent at {AgentEndpoint}, but an error occurred deserializing the response.", _apiRequestFactory.Info(_tracesEndpoint));
                 }
             }
             finally

@@ -1,3 +1,8 @@
+// <copyright file="ModuleLookup.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -14,7 +19,7 @@ namespace Datadog.Trace.ClrProfiler.Emit
         /// </summary>
         private const int MaxFailures = 50;
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(ModuleLookup));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(ModuleLookup));
 
         private static ManualResetEventSlim _populationResetEvent = new ManualResetEventSlim(initialState: true);
         private static ConcurrentDictionary<Guid, Module> _modules = new ConcurrentDictionary<Guid, Module>();

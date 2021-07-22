@@ -1,3 +1,8 @@
+// <copyright file="RuntimeMetricsWriterTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Linq;
 using System.Threading;
@@ -82,13 +87,17 @@ namespace Datadog.Trace.Tests.RuntimeMetrics
                     s => s.Increment(MetricsNames.ExceptionsCount, 5, It.IsAny<double>(), new[] { "exception_type:CustomException2" }),
                     Times.Once);
 
-                statsd.ResetCalls();
+                statsd.Invocations.Clear();
 
                 // Make sure stats are reset when pushed
                 writer.PushEvents();
 
                 statsd.Verify(
-                    s => s.Increment(MetricsNames.ExceptionsCount, It.IsAny<int>(), It.IsAny<double>(), It.IsAny<string[]>()),
+                    s => s.Increment(MetricsNames.ExceptionsCount, It.IsAny<int>(), It.IsAny<double>(), new[] { "exception_type:CustomException1" }),
+                    Times.Never);
+
+                statsd.Verify(
+                    s => s.Increment(MetricsNames.ExceptionsCount, It.IsAny<int>(), It.IsAny<double>(), new[] { "exception_type:CustomException2" }),
                     Times.Never);
             }
         }

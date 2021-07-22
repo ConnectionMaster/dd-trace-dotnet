@@ -1,3 +1,8 @@
+// <copyright file="CustomSamplingRule.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,7 +14,7 @@ namespace Datadog.Trace.Sampling
 {
     internal class CustomSamplingRule : ISamplingRule
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<CustomSamplingRule>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<CustomSamplingRule>();
         private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
 
         private readonly float _samplingRate;
@@ -127,7 +132,7 @@ namespace Datadog.Trace.Sampling
                 _hasPoisonedRegex = true;
                 Log.Error(
                     timeoutEx,
-                    "Timeout when trying to match against {0} on {1}.",
+                    "Timeout when trying to match against {Value} on {Pattern}.",
                     input,
                     pattern);
             }

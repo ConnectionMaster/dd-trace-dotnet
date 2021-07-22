@@ -1,9 +1,13 @@
+// <copyright file="RabbitMQTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if !NET452
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
-using Datadog.Core.Tools;
 using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.TestHelpers;
 using Xunit;
@@ -21,11 +25,22 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             SetServiceVersion("1.0.0");
         }
 
-        [Theory]
-        [MemberData(nameof(PackageVersions.RabbitMQ), MemberType = typeof(PackageVersions))]
-        [Trait("Category", "EndToEnd")]
-        public void SubmitsTraces(string packageVersion)
+        public static IEnumerable<object[]> GetRabbitMQVersions()
         {
+            foreach (object[] item in PackageVersions.RabbitMQ)
+            {
+                yield return item.Concat(new object[] { false, }).ToArray();
+                yield return item.Concat(new object[] { true }).ToArray();
+            }
+        }
+
+        [Theory]
+        [MemberData(nameof(GetRabbitMQVersions))]
+        [Trait("Category", "EndToEnd")]
+        public void SubmitsTraces(string packageVersion, bool enableCallTarget)
+        {
+            SetCallTargetSettings(enableCallTarget);
+
             var expectedSpanCount = 26;
 
             int basicPublishCount = 0;
@@ -40,7 +55,7 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
 
             int agentPort = TcpPortProvider.GetOpenPort();
             using (var agent = new MockTracerAgent(agentPort))
-            using (var processResult = RunSampleAndWaitForExit(agent.Port, packageVersion: packageVersion))
+            using (var processResult = RunSampleAndWaitForExit(agent.Port, arguments: $"{TestPrefix}", packageVersion: packageVersion))
             {
                 Assert.True(processResult.ExitCode >= 0, $"Process exited with code {processResult.ExitCode} and exception: {processResult.StandardError}");
 

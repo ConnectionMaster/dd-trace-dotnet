@@ -1,3 +1,8 @@
+// <copyright file="SqlCommandIntegration.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Data;
 using System.Data.Common;
@@ -32,7 +37,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations.AdoNet
         private const string MicrosoftSqlCommandTypeName = MicrosoftSqlClientNamespace + "." + SqlCommandTypeName;
         private const string MicrosoftSqlDataReaderTypeName = MicrosoftSqlClientNamespace + "." + SqlDataReaderTypeName;
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(SqlCommandIntegration));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(SqlCommandIntegration));
 
         /// <summary>
         /// Instrumentation wrapper for System.Data.SqlCommand.ExecuteReader().
@@ -343,7 +348,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations.AdoNet
                        .Start(moduleVersionPtr, mdToken, opCode, methodName)
                        .WithConcreteType(sqlCommandType)
                        .WithParameters(commandBehavior, cancellationToken)
-                       .WithNamespaceAndNameFilters(ClrNames.GenericTask, AdoNetConstants.TypeNames.CommandBehavior, ClrNames.CancellationToken)
+                       .WithNamespaceAndNameFilters($"{ClrNames.GenericTask}<{sqlClientNamespace}.{SqlDataReaderTypeName}>", AdoNetConstants.TypeNames.CommandBehavior, ClrNames.CancellationToken)
                        .Build();
             }
             catch (Exception ex)
@@ -550,7 +555,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations.AdoNet
             TargetAssemblies = new[] { MicrosoftSqlClientAssemblyName },
             TargetType = MicrosoftSqlCommandTypeName,
             TargetMethod = AdoNetConstants.MethodNames.ExecuteNonQueryAsync,
-            TargetSignatureTypes = new[] { "System.Threading.Tasks.Task`1<System.Int32>", ClrNames.CancellationToken },
+            TargetSignatureTypes = new[] { ClrNames.Int32Task, ClrNames.CancellationToken },
             TargetMinimumVersion = Major1,
             TargetMaximumVersion = Major2)]
         public static object MicrosoftSqlClientExecuteNonQueryAsync(
@@ -589,7 +594,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations.AdoNet
                        .Start(moduleVersionPtr, mdToken, opCode, methodName)
                        .WithConcreteType(targetType)
                        .WithParameters(cancellationToken)
-                       .WithNamespaceAndNameFilters(ClrNames.GenericTask, ClrNames.CancellationToken)
+                       .WithNamespaceAndNameFilters(ClrNames.Int32Task, ClrNames.CancellationToken)
                        .Build();
             }
             catch (Exception ex)
@@ -769,7 +774,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations.AdoNet
             TargetAssemblies = new[] { MicrosoftSqlClientAssemblyName },
             TargetType = MicrosoftSqlCommandTypeName,
             TargetMethod = AdoNetConstants.MethodNames.ExecuteScalarAsync,
-            TargetSignatureTypes = new[] { "System.Threading.Tasks.Task`1<System.Object>", ClrNames.CancellationToken },
+            TargetSignatureTypes = new[] { ClrNames.ObjectTask, ClrNames.CancellationToken },
             TargetMinimumVersion = Major1,
             TargetMaximumVersion = Major2)]
         public static object MicrosoftSqlClientExecuteScalarAsync(
@@ -808,7 +813,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations.AdoNet
                        .Start(moduleVersionPtr, mdToken, opCode, methodName)
                        .WithConcreteType(targetType)
                        .WithParameters(cancellationToken)
-                       .WithNamespaceAndNameFilters(ClrNames.GenericTask, ClrNames.CancellationToken)
+                       .WithNamespaceAndNameFilters(ClrNames.ObjectTask, ClrNames.CancellationToken)
                        .Build();
             }
             catch (Exception ex)

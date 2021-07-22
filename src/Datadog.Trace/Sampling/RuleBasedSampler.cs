@@ -1,3 +1,8 @@
+// <copyright file="RuleBasedSampler.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System.Collections.Generic;
 using Datadog.Trace.Logging;
 
@@ -7,7 +12,7 @@ namespace Datadog.Trace.Sampling
     {
         private const ulong KnuthFactor = 1_111_111_111_111_111_111;
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<RuleBasedSampler>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<RuleBasedSampler>();
 
         private readonly IRateLimiter _limiter;
         private readonly DefaultSamplingRule _defaultRule = new DefaultSamplingRule();
@@ -37,7 +42,7 @@ namespace Datadog.Trace.Sampling
                         var sampleRate = rule.GetSamplingRate(span);
 
                         Log.Debug(
-                            "Matched on rule {0}. Applying rate of {1} to trace id {2}",
+                            "Matched on rule {RuleName}. Applying rate of {Rate} to trace id {TraceId}",
                             rule.RuleName,
                             sampleRate,
                             traceId);
@@ -47,7 +52,7 @@ namespace Datadog.Trace.Sampling
                 }
             }
 
-            Log.Debug("No rules matched for trace {0}", traceId);
+            Log.Debug("No rules matched for trace {TraceId}", traceId);
 
             return SamplingPriority.AutoKeep;
         }

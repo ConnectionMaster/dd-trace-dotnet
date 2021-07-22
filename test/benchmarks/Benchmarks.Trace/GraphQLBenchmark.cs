@@ -1,10 +1,7 @@
-using System;
-using System.Runtime.InteropServices;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Datadog.Trace;
-using Datadog.Trace.ClrProfiler.Emit;
-using Datadog.Trace.ClrProfiler.Integrations;
 using Datadog.Trace.Configuration;
 using GraphQL;
 using GraphQL.Execution;
@@ -15,8 +12,6 @@ namespace Benchmarks.Trace
     public class GraphQLBenchmark
     {
         private static readonly Task<ExecutionResult> Result = Task.FromResult(new ExecutionResult { Value = 42 });
-        private static readonly int MdToken;
-        private static readonly IntPtr GuidPtr;
         private static readonly GraphQLClient Client = new GraphQLClient();
         private static readonly ExecutionContext Context = new ExecutionContext();
 
@@ -29,25 +24,20 @@ namespace Benchmarks.Trace
 
             Tracer.Instance = new Tracer(settings, new DummyAgentWriter(), null, null, null);
 
-            var methodInfo = typeof(GraphQLClient).GetMethod("ExecuteAsync", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-
-            MdToken = methodInfo.MetadataToken;
-            var guid = typeof(GraphQLClient).Module.ModuleVersionId;
-
-            GuidPtr = Marshal.AllocHGlobal(Marshal.SizeOf(guid));
-
-            Marshal.StructureToPtr(guid, GuidPtr, false);
-
             new GraphQLBenchmark().ExecuteAsync();
-
         }
 
         [Benchmark]
-        public int ExecuteAsync()
+        public unsafe int ExecuteAsync()
         {
-            var task = (Task<ExecutionResult>)GraphQLIntegration.ExecuteAsync(Client, Context, (int)OpCodeValue.Callvirt, MdToken, (long)GuidPtr);
+            var task = CallTarget.Run<Datadog.Trace.ClrProfiler.AutoInstrumentation.GraphQL.ExecuteAsyncIntegration, GraphQLClient, ExecutionContext, Task<ExecutionResult>>(
+                Client,
+                Context,
+                &ExecuteAsync);
 
             return task.GetAwaiter().GetResult().Value;
+
+            static Task<ExecutionResult> ExecuteAsync(ExecutionContext context) => Result;
         }
 
         private class GraphQLClient : IExecutionStrategy
@@ -78,12 +68,13 @@ namespace GraphQL
         {
             public DocumentImpl Document { get; } = new DocumentImpl();
             public OperationImpl Operation { get; } = new OperationImpl();
+            public ErrorsImpl Errors { get; } = new ErrorsImpl();
         }
 
         internal class OperationImpl
         {
             public string Name { get; } = "OperationName";
-            public OperationTypes OperationType { get; } = OperationTypes.Default;
+            public OperationTypes OperationType { get; } = OperationTypes.Query;
         }
 
         internal class DocumentImpl
@@ -91,9 +82,30 @@ namespace GraphQL
             public string OriginalQuery { get; } = "Query";
         }
 
-        internal enum OperationTypes
+        internal class ErrorsImpl
         {
-            Default
+            int Count { get; } = 0;
+
+            ExecutionErrorImpl this[int index] { 
+                get {
+                    return null;
+                } 
+            }
+        }
+
+        internal class ExecutionErrorImpl
+        {
+            string Code { get; }
+            IEnumerable<object> Locations { get; }
+            string Message { get; }
+            IEnumerable<string> Path { get; }
+        }
+
+        public enum OperationTypes
+        {
+            Query,
+            Mutation,
+            Subscription
         }
     }
 }

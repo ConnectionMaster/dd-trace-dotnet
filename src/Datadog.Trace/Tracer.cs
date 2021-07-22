@@ -1,3 +1,8 @@
+// <copyright file="Tracer.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -25,7 +30,9 @@ namespace Datadog.Trace
     public class Tracer : IDatadogTracer
     {
         private const string UnknownServiceName = "UnknownService";
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<Tracer>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<Tracer>();
+
+        private static string _runtimeId;
 
         /// <summary>
         /// The number of Tracer instances that have been created and not yet destroyed.
@@ -49,6 +56,8 @@ namespace Datadog.Trace
         private readonly Timer _heartbeatTimer;
 
         private readonly IAgentWriter _agentWriter;
+
+        private string _agentVersion;
 
         static Tracer()
         {
@@ -95,7 +104,14 @@ namespace Datadog.Trace
                 Statsd = statsd ?? CreateDogStatsdClient(Settings, DefaultServiceName, Settings.DogStatsdPort);
             }
 
-            _agentWriter = agentWriter ?? new AgentWriter(new Api(Settings.AgentUri, TransportStrategy.Get(Settings), Statsd), Statsd, queueSize: Settings.TraceQueueSize);
+            if (agentWriter == null)
+            {
+                _agentWriter = new AgentWriter(new Api(Settings.AgentUri, TransportStrategy.Get(Settings), Statsd), Statsd, maxBufferSize: Settings.TraceBufferSize);
+            }
+            else
+            {
+                _agentWriter = agentWriter;
+            }
 
             _scopeManager = scopeManager ?? new AsyncLocalScopeManager();
             Sampler = sampler ?? new RuleBasedSampler(new RateLimiter(Settings.MaxTracesSubmittedPerSecond));
@@ -114,7 +130,7 @@ namespace Datadog.Trace
 
                 if (globalRate < 0f || globalRate > 1f)
                 {
-                    Log.Warning("{0} configuration of {1} is out of range", ConfigurationKeys.GlobalSamplingRate, Settings.GlobalSamplingRate);
+                    Log.Warning("{ConfigurationKey} configuration of {ConfigurationValue} is out of range", ConfigurationKeys.GlobalSamplingRate, Settings.GlobalSamplingRate);
                 }
                 else
                 {
@@ -161,7 +177,7 @@ namespace Datadog.Trace
             {
                 if (Settings.StartupDiagnosticLogEnabled)
                 {
-                    _ = WriteDiagnosticLog();
+                    _ = Task.Run(WriteDiagnosticLog);
                 }
 
                 if (Settings.RuntimeMetricsEnabled)
@@ -218,6 +234,27 @@ namespace Datadog.Trace
         public TracerSettings Settings { get; }
 
         /// <summary>
+        /// Gets or sets the detected version of the agent
+        /// </summary>
+        string IDatadogTracer.AgentVersion
+        {
+            get
+            {
+                return _agentVersion;
+            }
+
+            set
+            {
+                if (ShouldLogPartialFlushWarning(value))
+                {
+                    var detectedVersion = string.IsNullOrEmpty(value) ? "{detection failed}" : value;
+
+                    Log.Warning("DATADOG TRACER DIAGNOSTICS - Partial flush should only be enabled with agent 7.26.0+ (detected version: {version})", detectedVersion);
+                }
+            }
+        }
+
+        /// <summary>
         /// Gets the tracer's scope manager, which determines which span is currently active, if any.
         /// </summary>
         IScopeManager IDatadogTracer.ScopeManager => _scopeManager;
@@ -226,6 +263,8 @@ namespace Datadog.Trace
         /// Gets the <see cref="ISampler"/> instance used by this <see cref="IDatadogTracer"/> instance.
         /// </summary>
         ISampler IDatadogTracer.Sampler => Sampler;
+
+        internal static string RuntimeId => LazyInitializer.EnsureInitialized(ref _runtimeId, () => Guid.NewGuid().ToString());
 
         internal IDiagnosticManager DiagnosticManager { get; set; }
 
@@ -330,69 +369,21 @@ namespace Datadog.Trace
         /// <returns>The newly created span</returns>
         public Span StartSpan(string operationName, ISpanContext parent = null, string serviceName = null, DateTimeOffset? startTime = null, bool ignoreActiveScope = false)
         {
-            if (parent == null && !ignoreActiveScope)
-            {
-                parent = _scopeManager.Active?.Span?.Context;
-            }
-
-            ITraceContext traceContext;
-
-            // try to get the trace context (from local spans) or
-            // sampling priority (from propagated spans),
-            // otherwise start a new trace context
-            if (parent is SpanContext parentSpanContext)
-            {
-                traceContext = parentSpanContext.TraceContext ??
-                               new TraceContext(this)
-                               {
-                                   SamplingPriority = parentSpanContext.SamplingPriority
-                               };
-            }
-            else
-            {
-                traceContext = new TraceContext(this);
-            }
-
-            var finalServiceName = serviceName ?? parent?.ServiceName ?? DefaultServiceName;
-            var spanContext = new SpanContext(parent, traceContext, finalServiceName);
-
-            var span = new Span(spanContext, startTime)
-            {
-                OperationName = operationName,
-            };
-
-            // Apply any global tags
-            if (Settings.GlobalTags.Count > 0)
-            {
-                foreach (var entry in Settings.GlobalTags)
-                {
-                    span.SetTag(entry.Key, entry.Value);
-                }
-            }
-
-            // automatically add the "env" tag if defined, taking precedence over an "env" tag set from a global tag
-            var env = Settings.Environment;
-            if (!string.IsNullOrWhiteSpace(env))
-            {
-                span.SetTag(Tags.Env, env);
-            }
-
-            // automatically add the "version" tag if defined, taking precedence over an "version" tag set from a global tag
-            var version = Settings.ServiceVersion;
-            if (!string.IsNullOrWhiteSpace(version) && string.Equals(finalServiceName, DefaultServiceName))
-            {
-                span.SetTag(Tags.Version, version);
-            }
-
-            traceContext.AddSpan(span);
-            return span;
+            return StartSpan(operationName, tags: null, parent, serviceName, startTime, ignoreActiveScope, spanId: null);
         }
+
+        /// <summary>
+        /// Forces the tracer to immediately flush pending traces and send them to the agent.
+        /// To be called when the appdomain or the process is about to be killed in a non-graceful way.
+        /// </summary>
+        /// <returns>Task used to track the async flush operation</returns>
+        public Task ForceFlushAsync() => FlushAsync();
 
         /// <summary>
         /// Writes the specified <see cref="Span"/> collection to the agent writer.
         /// </summary>
         /// <param name="trace">The <see cref="Span"/> collection to write.</param>
-        void IDatadogTracer.Write(Span[] trace)
+        void IDatadogTracer.Write(ArraySegment<Span> trace)
         {
             if (Settings.TraceEnabled)
             {
@@ -400,13 +391,7 @@ namespace Datadog.Trace
             }
         }
 
-        internal Scope StartActiveWithTags(string operationName, ISpanContext parent = null, string serviceName = null, DateTimeOffset? startTime = null, bool ignoreActiveScope = false, bool finishOnClose = true, ITags tags = null)
-        {
-            var span = StartSpan(operationName, tags, parent, serviceName, startTime, ignoreActiveScope);
-            return _scopeManager.Activate(span, finishOnClose);
-        }
-
-        internal Span StartSpan(string operationName, ITags tags, ISpanContext parent = null, string serviceName = null, DateTimeOffset? startTime = null, bool ignoreActiveScope = false)
+        internal SpanContext CreateSpanContext(ISpanContext parent = null, string serviceName = null, bool ignoreActiveScope = false, ulong? spanId = null)
         {
             if (parent == null && !ignoreActiveScope)
             {
@@ -421,10 +406,7 @@ namespace Datadog.Trace
             if (parent is SpanContext parentSpanContext)
             {
                 traceContext = parentSpanContext.TraceContext ??
-                               new TraceContext(this)
-                               {
-                                   SamplingPriority = parentSpanContext.SamplingPriority
-                               };
+                    new TraceContext(this) { SamplingPriority = parentSpanContext.SamplingPriority };
             }
             else
             {
@@ -432,7 +414,20 @@ namespace Datadog.Trace
             }
 
             var finalServiceName = serviceName ?? parent?.ServiceName ?? DefaultServiceName;
-            var spanContext = new SpanContext(parent, traceContext, finalServiceName);
+            var spanContext = new SpanContext(parent, traceContext, finalServiceName, spanId);
+
+            return spanContext;
+        }
+
+        internal Scope StartActiveWithTags(string operationName, ISpanContext parent = null, string serviceName = null, DateTimeOffset? startTime = null, bool ignoreActiveScope = false, bool finishOnClose = true, ITags tags = null, ulong? spanId = null)
+        {
+            var span = StartSpan(operationName, tags, parent, serviceName, startTime, ignoreActiveScope, spanId);
+            return _scopeManager.Activate(span, finishOnClose);
+        }
+
+        internal Span StartSpan(string operationName, ITags tags, ISpanContext parent = null, string serviceName = null, DateTimeOffset? startTime = null, bool ignoreActiveScope = false, ulong? spanId = null)
+        {
+            var spanContext = CreateSpanContext(parent, serviceName, ignoreActiveScope, spanId);
 
             var span = new Span(spanContext, startTime, tags)
             {
@@ -457,12 +452,12 @@ namespace Datadog.Trace
 
             // automatically add the "version" tag if defined, taking precedence over an "version" tag set from a global tag
             var version = Settings.ServiceVersion;
-            if (!string.IsNullOrWhiteSpace(version) && string.Equals(finalServiceName, DefaultServiceName))
+            if (!string.IsNullOrWhiteSpace(version) && string.Equals(spanContext.ServiceName, DefaultServiceName))
             {
                 span.SetTag(Tags.Version, version);
             }
 
-            traceContext.AddSpan(span);
+            spanContext.TraceContext.AddSpan(span);
             return span;
         }
 
@@ -577,6 +572,18 @@ namespace Datadog.Trace
                     writer.WritePropertyName("netstandard_enabled");
                     writer.WriteValue(Settings.IsNetStandardFeatureFlagEnabled());
 
+                    writer.WritePropertyName("routetemplate_resourcenames_enabled");
+                    writer.WriteValue(Settings.RouteTemplateResourceNamesEnabled);
+
+                    writer.WritePropertyName("partialflush_enabled");
+                    writer.WriteValue(Settings.PartialFlushEnabled);
+
+                    writer.WritePropertyName("partialflush_minspans");
+                    writer.WriteValue(Settings.PartialFlushMinSpans);
+
+                    writer.WritePropertyName("runtime_id");
+                    writer.WriteValue(RuntimeId);
+
                     writer.WritePropertyName("agent_reachable");
                     writer.WriteValue(agentError == null);
 
@@ -586,12 +593,30 @@ namespace Datadog.Trace
                     writer.WriteEndObject();
                 }
 
-                Log.Information("DATADOG TRACER CONFIGURATION - {0}", stringWriter.ToString());
+                Log.Information("DATADOG TRACER CONFIGURATION - {Configuration}", stringWriter.ToString());
             }
             catch (Exception ex)
             {
                 Log.Warning(ex, "DATADOG TRACER DIAGNOSTICS - Error fetching configuration");
             }
+        }
+
+        internal bool ShouldLogPartialFlushWarning(string agentVersion)
+        {
+            if (agentVersion != _agentVersion)
+            {
+                _agentVersion = agentVersion;
+
+                if (Settings.PartialFlushEnabled)
+                {
+                    if (!Version.TryParse(agentVersion, out var parsedVersion) || parsedVersion < new Version(7, 26, 0))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -613,7 +638,7 @@ namespace Datadog.Trace
                 catch (Exception ex)
                 {
                     // Unable to call into System.Web.dll
-                    Log.SafeLogError(ex, "Unable to get application name through ASP.NET settings");
+                    Log.Error(ex, "Unable to get application name through ASP.NET settings");
                 }
 
                 return Assembly.GetEntryAssembly()?.GetName().Name ??
@@ -621,7 +646,7 @@ namespace Datadog.Trace
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Error creating default service name.");
+                Log.Error(ex, "Error creating default service name.");
                 return null;
             }
         }
@@ -653,7 +678,8 @@ namespace Datadog.Trace
                                        $"lang_interpreter:{FrameworkDescription.Instance.Name}",
                                        $"lang_version:{FrameworkDescription.Instance.ProductVersion}",
                                        $"tracer_version:{TracerConstants.AssemblyVersion}",
-                                       $"service:{serviceName}"
+                                       $"service:{serviceName}",
+                                       $"{Tags.RuntimeId}:{RuntimeId}"
                                    };
 
                 if (settings.Environment != null)
@@ -667,25 +693,37 @@ namespace Datadog.Trace
                 }
 
                 var statsd = new DogStatsdService();
-                statsd.Configure(new StatsdConfig
+                if (AzureAppServices.Metadata.IsRelevant)
                 {
-                    StatsdServerName = settings.AgentUri.DnsSafeHost,
-                    StatsdPort = port,
-                    ConstantTags = constantTags.ToArray()
-                });
+                    // Environment variables set by the Azure App Service extension are used internally.
+                    // Setting the server name will force UDP, when we need named pipes.
+                    statsd.Configure(new StatsdConfig
+                    {
+                        ConstantTags = constantTags.ToArray()
+                    });
+                }
+                else
+                {
+                    statsd.Configure(new StatsdConfig
+                    {
+                        StatsdServerName = settings.AgentUri.DnsSafeHost,
+                        StatsdPort = port,
+                        ConstantTags = constantTags.ToArray()
+                    });
+                }
 
                 return statsd;
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, $"Unable to instantiate {nameof(Statsd)} client.");
+                Log.Error(ex, $"Unable to instantiate {nameof(Statsd)} client.");
                 return new NoOpStatsd();
             }
         }
 
         private void InitializeLibLogScopeEventSubscriber(IScopeManager scopeManager, string defaultServiceName, string version, string env)
         {
-            new LibLogScopeEventSubscriber(scopeManager, defaultServiceName, version ?? string.Empty, env ?? string.Empty);
+            new LibLogScopeEventSubscriber(this, scopeManager, defaultServiceName, version ?? string.Empty, env ?? string.Empty);
         }
 
         private void CurrentDomain_ProcessExit(object sender, EventArgs e)
@@ -695,7 +733,7 @@ namespace Datadog.Trace
 
         private void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
-            Log.Warning("Application threw an unhandled exception: {0}", e.ExceptionObject);
+            Log.Warning("Application threw an unhandled exception: {Exception}", e.ExceptionObject);
             RunShutdownTasks();
         }
 
@@ -717,7 +755,7 @@ namespace Datadog.Trace
             }
             catch (Exception ex)
             {
-                Log.SafeLogError(ex, "Error flushing traces on shutdown.");
+                Log.Error(ex, "Error flushing traces on shutdown.");
             }
         }
 

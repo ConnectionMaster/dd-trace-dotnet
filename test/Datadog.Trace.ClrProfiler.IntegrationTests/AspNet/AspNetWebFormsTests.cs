@@ -1,3 +1,8 @@
+// <copyright file="AspNetWebFormsTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if NET461 || NET452
 
 using System;
@@ -10,6 +15,7 @@ using Xunit.Abstractions;
 
 namespace Datadog.Trace.ClrProfiler.IntegrationTests
 {
+    [Collection("IisTests")]
     public class AspNetWebFormsTests : TestHelper, IClassFixture<IisFixture>
     {
         private readonly IisFixture _iisFixture;
@@ -22,19 +28,21 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             SetServiceVersion("1.0.0");
 
             _iisFixture = iisFixture;
-            _iisFixture.TryStartIis(this);
+            _iisFixture.ShutdownPath = "/account/login?shutdown=1";
+            _iisFixture.TryStartIis(this, IisAppType.AspNetIntegrated);
         }
 
         [Theory]
         [Trait("Category", "EndToEnd")]
-        [Trait("Integration", nameof(AspNetWebFormsTests))]
+        [Trait("RunOnWindows", "True")]
+        [Trait("LoadFromGAC", "True")]
         [InlineData("/Account/Login", "GET /account/login", false)]
         public async Task SubmitsTraces(
             string path,
             string expectedResourceName,
             bool isError)
         {
-            await AssertWebServerSpan(
+            await AssertAspNetSpanOnly(
                 path,
                 _iisFixture.Agent,
                 _iisFixture.HttpPort,
@@ -43,14 +51,14 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
                 expectedErrorType: null,
                 expectedErrorMessage: null,
                 SpanTypes.Web,
-                "aspnet.request",
                 expectedResourceName,
                 "1.0.0");
         }
 
-        [Fact]
+        [Fact(Skip = "This test requires Elasticsearch to be running on the host, which is not currently enabled in CI.")]
         [Trait("Category", "EndToEnd")]
-        [Trait("Integration", nameof(AspNetWebFormsTests))]
+        [Trait("RunOnWindows", "True")]
+        [Trait("LoadFromGAC", "True")]
         public async Task NestedAsyncElasticCallSubmitsTrace()
         {
             var testStart = DateTime.UtcNow;

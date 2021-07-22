@@ -1,14 +1,24 @@
+// <copyright file="AspNetWebApi2Integration.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if NETFRAMEWORK
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web;
+using Datadog.Trace.AspNet;
 using Datadog.Trace.ClrProfiler.Emit;
 using Datadog.Trace.ClrProfiler.Helpers;
+using Datadog.Trace.ClrProfiler.Integrations.AspNet;
 using Datadog.Trace.Configuration;
 using Datadog.Trace.DogStatsd;
+using Datadog.Trace.DuckTyping;
 using Datadog.Trace.ExtensionMethods;
+using Datadog.Trace.Headers;
 using Datadog.Trace.Logging;
 using Datadog.Trace.Tagging;
 using Datadog.Trace.Util;
@@ -22,14 +32,14 @@ namespace Datadog.Trace.ClrProfiler.Integrations
     {
         private const string OperationName = "aspnet-webapi.request";
         private const string Major5Minor1 = "5.1";
-        private const string Major5 = "5";
+        private const string Major5MinorX = "5";
 
         private const string SystemWebHttpAssemblyName = "System.Web.Http";
         private const string HttpControllerTypeName = "System.Web.Http.Controllers.IHttpController";
         private const string HttpControllerContextTypeName = "System.Web.Http.Controllers.HttpControllerContext";
 
         private static readonly IntegrationInfo IntegrationId = IntegrationRegistry.GetIntegrationInfo(nameof(IntegrationIds.AspNetWebApi2));
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(AspNetWebApi2Integration));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(AspNetWebApi2Integration));
 
         /// <summary>
         /// Calls the underlying ExecuteAsync and traces the request.
@@ -46,7 +56,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
             TargetType = HttpControllerTypeName,
             TargetSignatureTypes = new[] { ClrNames.HttpResponseMessageTask, HttpControllerContextTypeName, ClrNames.CancellationToken },
             TargetMinimumVersion = Major5Minor1,
-            TargetMaximumVersion = Major5)]
+            TargetMaximumVersion = Major5MinorX)]
         public static object ExecuteAsync(
             object apiController,
             object controllerContext,
@@ -58,7 +68,6 @@ namespace Datadog.Trace.ClrProfiler.Integrations
             if (apiController == null) { throw new ArgumentNullException(nameof(apiController)); }
 
             var cancellationToken = (CancellationToken)boxedCancellationToken;
-            var callOpCode = (OpCodeValue)opCode;
             var httpControllerType = apiController.GetInstrumentedInterface(HttpControllerTypeName);
 
             Type taskResultType;
@@ -104,7 +113,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                                     .WithConcreteType(httpControllerType)
                                     .WithParameters(controllerContext, cancellationToken)
                                     .WithNamespaceAndNameFilters(
-                                         ClrNames.GenericTask,
+                                         ClrNames.HttpResponseMessageTask,
                                          HttpControllerContextTypeName,
                                          ClrNames.CancellationToken)
                                     .Build();
@@ -139,21 +148,23 @@ namespace Datadog.Trace.ClrProfiler.Integrations
         /// <typeparam name="T">The type of the generic Task instantiation</typeparam>
         /// <param name="instrumentedMethod">The underlying ExecuteAsync method</param>
         /// <param name="apiController">The Api Controller</param>
-        /// <param name="controllerContext">The controller context for the call</param>
+        /// <param name="context">The controller context for the call</param>
         /// <param name="cancellationToken">The cancellation token</param>
         /// <returns>A task with the result</returns>
         private static async Task<T> ExecuteAsyncInternal<T>(
             Func<object, object, CancellationToken, object> instrumentedMethod,
             object apiController,
-            object controllerContext,
+            object context,
             CancellationToken cancellationToken)
         {
+            var controllerContext = context.DuckCast<IHttpControllerContext>();
+
             Scope scope = CreateScope(controllerContext, out var tags);
 
             try
             {
                 // call the original method, inspecting (and rethrowing) any unhandled exceptions
-                var task = (Task<T>)instrumentedMethod(apiController, controllerContext, cancellationToken);
+                var task = (Task<T>)instrumentedMethod(apiController, context, cancellationToken);
                 var responseMessage = await task;
 
                 if (scope != null)
@@ -161,8 +172,13 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                     // some fields aren't set till after execution, so populate anything missing
                     UpdateSpan(controllerContext, scope.Span, tags, Enumerable.Empty<KeyValuePair<string, string>>());
 
-                    var statusCode = responseMessage.GetProperty("StatusCode");
-                    scope.Span.SetHttpStatusCode((int)statusCode.Value, isServer: true);
+                    var httpContext = System.Web.HttpContext.Current;
+                    if (httpContext != null && HttpRuntime.UsingIntegratedPipeline)
+                    {
+                        scope.Span.SetHeaderTags<IHeadersCollection>(httpContext.Response.Headers.Wrap(), Tracer.Instance.Settings.HeaderTags, defaultTagPrefix: SpanContextPropagator.HttpResponseHeadersTagPrefix);
+                    }
+
+                    scope.Span.SetHttpStatusCode(responseMessage.DuckCast<HttpResponseMessageStruct>().StatusCode, isServer: true);
                     scope.Dispose();
                 }
 
@@ -198,7 +214,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
             }
         }
 
-        private static Scope CreateScope(object controllerContext, out AspNetTags tags)
+        internal static Scope CreateScope(IHttpControllerContext controllerContext, out AspNetTags tags)
         {
             Scope scope = null;
             tags = null;
@@ -212,7 +228,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                 }
 
                 var tracer = Tracer.Instance;
-                var request = controllerContext.GetProperty<object>("Request").GetValueOrDefault();
+                var request = controllerContext.Request;
                 SpanContext propagatedContext = null;
                 var tagsFromHeaders = Enumerable.Empty<KeyValuePair<string, string>>();
 
@@ -221,11 +237,11 @@ namespace Datadog.Trace.ClrProfiler.Integrations
                     try
                     {
                         // extract propagated http headers
-                        var headers = request.GetProperty<object>("Headers").GetValueOrDefault();
-                        var headersCollection = new ReflectionHttpHeadersCollection(headers);
+                        var headers = request.Headers;
+                        var headersCollection = new HttpHeadersCollection(headers);
 
                         propagatedContext = SpanContextPropagator.Instance.Extract(headersCollection);
-                        tagsFromHeaders = SpanContextPropagator.Instance.ExtractHeaderTags(headersCollection, tracer.Settings.HeaderTags);
+                        tagsFromHeaders = SpanContextPropagator.Instance.ExtractHeaderTags(headersCollection, tracer.Settings.HeaderTags, SpanContextPropagator.HttpRequestHeadersTagPrefix);
                     }
                     catch (Exception ex)
                     {
@@ -247,56 +263,63 @@ namespace Datadog.Trace.ClrProfiler.Integrations
             return scope;
         }
 
-        private static void UpdateSpan(object controllerContext, Span span, AspNetTags tags, IEnumerable<KeyValuePair<string, string>> headerTags)
+        internal static void UpdateSpan(IHttpControllerContext controllerContext, Span span, AspNetTags tags, IEnumerable<KeyValuePair<string, string>> headerTags)
         {
             try
             {
-                object request = controllerContext.GetProperty<object>("Request").GetValueOrDefault();
-                Uri requestUri = request.GetProperty<Uri>("RequestUri").GetValueOrDefault();
+                var newResourceNamesEnabled = Tracer.Instance.Settings.RouteTemplateResourceNamesEnabled;
+                var request = controllerContext.Request;
+                Uri requestUri = request.RequestUri;
 
-                string host = request.GetProperty<object>("Headers").GetProperty<string>("Host").GetValueOrDefault() ?? string.Empty;
+                string host = request.Headers.Host ?? string.Empty;
                 string rawUrl = requestUri?.ToString().ToLowerInvariant() ?? string.Empty;
-                string absoluteUri = requestUri?.AbsoluteUri?.ToLowerInvariant() ?? string.Empty;
-                string method = request.GetProperty<object>("Method").GetProperty<string>("Method").GetValueOrDefault()?.ToUpperInvariant() ?? "GET";
+                string method = request.Method.Method?.ToUpperInvariant() ?? "GET";
                 string route = null;
                 try
                 {
-                    route = controllerContext.GetProperty<object>("RouteData").GetProperty<object>("Route").GetProperty<string>("RouteTemplate").GetValueOrDefault();
+                    route = controllerContext.RouteData.Route.RouteTemplate;
                 }
                 catch
                 {
                 }
 
-                string resourceName = $"{method} {absoluteUri.ToLowerInvariant()}";
+                string resourceName;
 
                 if (route != null)
                 {
-                    resourceName = $"{method} {route.ToLowerInvariant()}";
+                    resourceName = $"{method} {(newResourceNamesEnabled ? "/" : string.Empty)}{route.ToLowerInvariant()}";
                 }
                 else if (requestUri != null)
                 {
-                    var cleanUri = UriHelpers.GetRelativeUrl(requestUri, tryRemoveIds: true);
+                    var cleanUri = UriHelpers.GetCleanUriPath(requestUri);
                     resourceName = $"{method} {cleanUri.ToLowerInvariant()}";
+                }
+                else
+                {
+                    resourceName = $"{method}";
                 }
 
                 string controller = string.Empty;
                 string action = string.Empty;
+                string area = string.Empty;
                 try
                 {
-                    var routeValues = controllerContext.GetProperty<object>("RouteData").GetProperty<IDictionary<string, object>>("Values").GetValueOrDefault();
+                    var routeValues = controllerContext.RouteData.Values;
                     if (routeValues != null)
                     {
                         controller = (routeValues.GetValueOrDefault("controller") as string)?.ToLowerInvariant();
                         action = (routeValues.GetValueOrDefault("action") as string)?.ToLowerInvariant();
+                        area = (routeValues.GetValueOrDefault("area") as string)?.ToLowerInvariant();
                     }
                 }
                 catch
                 {
                 }
 
-                // Fail safe to catch templates in routing values
+                // Replace well-known routing tokens
                 resourceName =
                     resourceName
+                       .Replace("{area}", area)
                        .Replace("{controller}", controller)
                        .Replace("{action}", action);
 
@@ -310,7 +333,18 @@ namespace Datadog.Trace.ClrProfiler.Integrations
 
                 tags.AspNetAction = action;
                 tags.AspNetController = controller;
+                tags.AspNetArea = area;
                 tags.AspNetRoute = route;
+
+                if (newResourceNamesEnabled)
+                {
+                    // set the resource name in the HttpContext so TracingHttpModule can update root span
+                    var httpContext = System.Web.HttpContext.Current;
+                    if (httpContext is not null)
+                    {
+                        httpContext.Items[SharedConstants.HttpContextPropagatedResourceNameKey] = resourceName;
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -320,6 +354,11 @@ namespace Datadog.Trace.ClrProfiler.Integrations
 
         private static void OnRequestCompleted(System.Web.HttpContext httpContext, Scope scope, DateTimeOffset finishTime)
         {
+            if (HttpRuntime.UsingIntegratedPipeline)
+            {
+                scope.Span.SetHeaderTags<IHeadersCollection>(httpContext.Response.Headers.Wrap(), Tracer.Instance.Settings.HeaderTags, defaultTagPrefix: SpanContextPropagator.HttpResponseHeadersTagPrefix);
+            }
+
             scope.Span.SetHttpStatusCode(httpContext.Response.StatusCode, isServer: true);
             scope.Span.Finish(finishTime);
             scope.Dispose();

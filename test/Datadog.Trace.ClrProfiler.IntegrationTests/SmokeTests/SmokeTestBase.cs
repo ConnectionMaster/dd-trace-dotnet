@@ -1,13 +1,13 @@
+// <copyright file="SmokeTestBase.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Diagnostics;
-using System.IO;
-using System.Text;
-using System.Threading;
-using Datadog.Core.Tools;
 using Datadog.Trace.TestHelpers;
 using Xunit;
 using Xunit.Abstractions;
-using Xunit.Sdk;
 
 namespace Datadog.Trace.ClrProfiler.IntegrationTests.SmokeTests
 {
@@ -73,13 +73,11 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests.SmokeTests
                 agent.ShouldDeserializeTraces = shouldDeserializeTraces;
 
                 // Using the following code to avoid possible hangs on WaitForExit due to synchronous reads: https://stackoverflow.com/questions/139593/processstartinfo-hanging-on-waitforexit-why
-                using (var outputWaitHandle = new AutoResetEvent(false))
-                using (var errorWaitHandle = new AutoResetEvent(false))
                 using (var process = new Process())
                 {
                     // Initialize StartInfo
                     process.StartInfo.FileName = executable;
-                    EnvironmentHelper.SetEnvironmentVariables(agentPort, aspNetCorePort, statsdPort: null, executable, process.StartInfo.EnvironmentVariables);
+                    EnvironmentHelper.SetEnvironmentVariables(agentPort, aspNetCorePort, statsdPort: null, process.StartInfo.EnvironmentVariables, processToProfile: executable);
                     if (EnvironmentHelper.IsCoreClr())
                     {
                         // Command becomes: dotnet.exe <applicationPath>
@@ -92,39 +90,13 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests.SmokeTests
                     process.StartInfo.RedirectStandardError = true;
                     process.StartInfo.RedirectStandardInput = false;
 
-                    // Set up buffered output for stdout and stderr
-                    var outputBuffer = new StringBuilder();
-                    var errorBuffer = new StringBuilder();
-                    process.OutputDataReceived += (sender, e) =>
-                    {
-                        if (e.Data == null)
-                        {
-                            outputWaitHandle.Set();
-                        }
-                        else
-                        {
-                            outputBuffer.AppendLine(e.Data);
-                        }
-                    };
-                    process.ErrorDataReceived += (sender, e) =>
-                    {
-                        if (e.Data == null)
-                        {
-                            errorWaitHandle.Set();
-                        }
-                        else
-                        {
-                            errorBuffer.AppendLine(e.Data);
-                        }
-                    };
-
                     process.Start();
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
 
-                    var ranToCompletion = process.WaitForExit(MaxTestRunMilliseconds) && outputWaitHandle.WaitOne(MaxTestRunMilliseconds / 2) && errorWaitHandle.WaitOne(MaxTestRunMilliseconds / 2);
-                    var standardOutput = outputBuffer.ToString();
-                    var standardError = errorBuffer.ToString();
+                    using var helper = new ProcessHelper(process);
+
+                    var ranToCompletion = process.WaitForExit(MaxTestRunMilliseconds) && helper.Drain(MaxTestRunMilliseconds / 2);
+                    var standardOutput = helper.StandardOutput;
+                    var standardError = helper.ErrorOutput;
 
                     if (!ranToCompletion)
                     {

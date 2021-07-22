@@ -1,8 +1,12 @@
+// <copyright file="DogStatsDTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
-using Datadog.Core.Tools;
 using Datadog.Trace.Configuration;
 using Datadog.Trace.DogStatsd;
 using Datadog.Trace.TestHelpers;
@@ -68,7 +72,7 @@ namespace Datadog.Trace.Tests
 
             statsd.Verify(
                 s => s.Increment(TracerMetricNames.Api.Requests, 1, 1, null),
-                Times.Once());
+                Times.AtLeastOnce());
 
             if (requestSuccessful)
             {
@@ -84,26 +88,13 @@ namespace Datadog.Trace.Tests
                     Times.AtLeastOnce());
             }
 
-            // these methods can be called multiple times with a "0" value (no more traces left)
+            // Remove test flakiness by not requiring the heartbeat metric, which is Timer-based
+            // and not expected to fire when a trace is sent
             /*
-            statsd.Verify(
-                s => s.Add<Statsd.Gauge, int>(TracerMetricNames.Queue.DequeuedTraces, 0, 1, null),
-                Times.AtLeastOnce);
-
-            statsd.Verify(
-                s => s.Add<Statsd.Gauge, int>(TracerMetricNames.Queue.DequeuedSpans, 0, 1, null),
-                Times.AtLeastOnce());
-            */
-
-            // these method can be called multiple times with a "1000" value (the max buffer size, constant)
-            statsd.Verify(
-                s => s.Gauge(TracerMetricNames.Queue.MaxTraces, 1000, 1, null),
-                Times.AtLeastOnce());
-
-            // these method can be called multiple times (send heartbeat)
             statsd.Verify(
                 s => s.Gauge(TracerMetricNames.Health.Heartbeat, It.IsAny<double>(), 1, null),
                 Times.AtLeastOnce());
+            */
         }
 
         private static IImmutableList<MockTracerAgent.Span> SendSpan(bool tracerMetricsEnabled, IDogStatsd statsd)

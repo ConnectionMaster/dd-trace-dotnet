@@ -1,5 +1,11 @@
+// <copyright file="StringConfigurationSource.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using Datadog.Trace.ExtensionMethods;
 
 namespace Datadog.Trace.Configuration
@@ -17,6 +23,18 @@ namespace Datadog.Trace.Configuration
         /// <param name="data">A string containing key-value pairs which are comma-separated, and for which the key and value are colon-separated.</param>
         /// <returns><see cref="IDictionary{TKey, TValue}"/> of key value pairs.</returns>
         public static IDictionary<string, string> ParseCustomKeyValues(string data)
+        {
+            return ParseCustomKeyValues(data, allowOptionalMappings: false);
+        }
+
+        /// <summary>
+        /// Returns a <see cref="IDictionary{TKey, TValue}"/> from parsing
+        /// <paramref name="data"/>.
+        /// </summary>
+        /// <param name="data">A string containing key-value pairs which are comma-separated, and for which the key and value are colon-separated.</param>
+        /// <param name="allowOptionalMappings">Determines whether to create dictionary entries when the input has no value mapping</param>
+        /// <returns><see cref="IDictionary{TKey, TValue}"/> of key value pairs.</returns>
+        public static IDictionary<string, string> ParseCustomKeyValues(string data, bool allowOptionalMappings)
         {
             var dictionary = new ConcurrentDictionary<string, string>();
 
@@ -38,14 +56,22 @@ namespace Datadog.Trace.Configuration
             foreach (var e in entries)
             {
                 var kv = e.Split(':');
-                if (kv.Length != 2)
+                if (allowOptionalMappings && kv.Length == 1)
+                {
+                    var key = kv[0];
+                    var value = string.Empty;
+                    dictionary[key] = value;
+                }
+                else if (kv.Length != 2)
                 {
                     continue;
                 }
-
-                var key = kv[0];
-                var value = kv[1];
-                dictionary[key] = value;
+                else
+                {
+                    var key = kv[0];
+                    var value = kv[1];
+                    dictionary[key] = value;
+                }
             }
 
             return dictionary;
@@ -69,7 +95,7 @@ namespace Datadog.Trace.Configuration
         {
             string value = GetString(key);
 
-            return double.TryParse(value, out double result)
+            return double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out double result)
                        ? result
                        : (double?)null;
         }
@@ -88,7 +114,18 @@ namespace Datadog.Trace.Configuration
         /// <returns><see cref="ConcurrentDictionary{TKey, TValue}"/> containing all of the key-value pairs.</returns>
         public IDictionary<string, string> GetDictionary(string key)
         {
-            return ParseCustomKeyValues(GetString(key));
+            return ParseCustomKeyValues(GetString(key), allowOptionalMappings: false);
+        }
+
+        /// <summary>
+        /// Gets a <see cref="ConcurrentDictionary{TKey, TValue}"/> from parsing
+        /// </summary>
+        /// <param name="key">The key</param>
+        /// <param name="allowOptionalMappings">Determines whether to create dictionary entries when the input has no value mapping</param>
+        /// <returns><see cref="ConcurrentDictionary{TKey, TValue}"/> containing all of the key-value pairs.</returns>
+        public IDictionary<string, string> GetDictionary(string key, bool allowOptionalMappings)
+        {
+            return ParseCustomKeyValues(GetString(key), allowOptionalMappings);
         }
     }
 }

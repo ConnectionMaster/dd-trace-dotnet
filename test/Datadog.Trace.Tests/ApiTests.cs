@@ -1,14 +1,11 @@
+// <copyright file="ApiTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Net;
-using System.Net.Http;
 using System.Threading.Tasks;
 using Datadog.Trace.Agent;
-using Datadog.Trace.Agent.MessagePack;
-using Datadog.Trace.Configuration;
-using Datadog.Trace.Sampling;
-using Datadog.Trace.TestHelpers.HttpMessageHandlers;
 using Moq;
 using Xunit;
 
@@ -16,17 +13,6 @@ namespace Datadog.Trace.Tests
 {
     public class ApiTests
     {
-        private readonly Tracer _tracer;
-
-        public ApiTests()
-        {
-            var settings = new TracerSettings();
-            var writerMock = new Mock<IAgentWriter>();
-            var samplerMock = new Mock<ISampler>();
-
-            _tracer = new Tracer(settings, writerMock.Object, samplerMock.Object, scopeManager: null, statsd: null);
-        }
-
         [Fact]
         public async Task SendTraceAsync_200OK_AllGood()
         {
@@ -34,18 +20,16 @@ namespace Datadog.Trace.Tests
             responseMock.Setup(x => x.StatusCode).Returns(200);
 
             var requestMock = new Mock<IApiRequest>();
-            requestMock.Setup(x => x.PostAsync(It.IsAny<Span[][]>(), It.IsAny<FormatterResolverWrapper>())).ReturnsAsync(responseMock.Object);
+            requestMock.Setup(x => x.PostAsync(It.IsAny<ArraySegment<byte>>())).ReturnsAsync(responseMock.Object);
 
             var factoryMock = new Mock<IApiRequestFactory>();
             factoryMock.Setup(x => x.Create(It.IsAny<Uri>())).Returns(requestMock.Object);
 
             var api = new Api(new Uri("http://127.0.0.1:1234"), apiRequestFactory: factoryMock.Object, statsd: null);
 
-            var span = _tracer.StartSpan("Operation");
-            var traces = new[] { new[] { span } };
-            await api.SendTracesAsync(traces);
+            await api.SendTracesAsync(new ArraySegment<byte>(new byte[64]), 1);
 
-            requestMock.Verify(x => x.PostAsync(It.IsAny<Span[][]>(), It.IsAny<FormatterResolverWrapper>()), Times.Once());
+            requestMock.Verify(x => x.PostAsync(It.IsAny<ArraySegment<byte>>()), Times.Once());
         }
 
         [Fact]
@@ -55,20 +39,40 @@ namespace Datadog.Trace.Tests
             responseMock.Setup(x => x.StatusCode).Returns(500);
 
             var requestMock = new Mock<IApiRequest>();
-            requestMock.Setup(x => x.PostAsync(It.IsAny<Span[][]>(), It.IsAny<FormatterResolverWrapper>())).ReturnsAsync(responseMock.Object);
+            requestMock.Setup(x => x.PostAsync(It.IsAny<ArraySegment<byte>>())).ReturnsAsync(responseMock.Object);
 
             var factoryMock = new Mock<IApiRequestFactory>();
             factoryMock.Setup(x => x.Create(It.IsAny<Uri>())).Returns(requestMock.Object);
 
             var api = new Api(new Uri("http://127.0.0.1:1234"), apiRequestFactory: factoryMock.Object, statsd: null);
 
-            var span = _tracer.StartSpan("Operation");
-            var traces = new[] { new[] { span } };
-            await api.SendTracesAsync(traces);
+            await api.SendTracesAsync(new ArraySegment<byte>(new byte[64]), 1);
 
-            requestMock.Verify(x => x.PostAsync(It.IsAny<Span[][]>(), It.IsAny<FormatterResolverWrapper>()), Times.Exactly(5));
+            requestMock.Verify(x => x.PostAsync(It.IsAny<ArraySegment<byte>>()), Times.Exactly(5));
+        }
 
-            // TODO:bertrand check that it's properly logged
+        [Fact]
+        public async Task ExtractAgentVersionHeader()
+        {
+            const string agentVersion = "1.2.3";
+
+            var tracer = new Mock<IDatadogTracer>();
+
+            var responseMock = new Mock<IApiResponse>();
+            responseMock.Setup(x => x.StatusCode).Returns(200);
+            responseMock.Setup(x => x.GetHeader(AgentHttpHeaderNames.AgentVersion)).Returns(agentVersion);
+
+            var requestMock = new Mock<IApiRequest>();
+            requestMock.Setup(x => x.PostAsync(It.IsAny<ArraySegment<byte>>())).ReturnsAsync(responseMock.Object);
+
+            var factoryMock = new Mock<IApiRequestFactory>();
+            factoryMock.Setup(x => x.Create(It.IsAny<Uri>())).Returns(requestMock.Object);
+
+            var api = new Api(new Uri("http://127.0.0.1:1234"), apiRequestFactory: factoryMock.Object, statsd: null, tracer: tracer.Object);
+
+            await api.SendTracesAsync(new ArraySegment<byte>(new byte[64]), 1);
+
+            tracer.VerifySet(t => t.AgentVersion = agentVersion, Times.Once);
         }
     }
 }

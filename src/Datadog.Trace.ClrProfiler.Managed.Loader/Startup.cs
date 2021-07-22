@@ -1,3 +1,8 @@
+// <copyright file="Startup.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Reflection;
 
@@ -34,7 +39,7 @@ namespace Datadog.Trace.ClrProfiler.Managed.Loader
         {
             try
             {
-                var assembly = Assembly.Load("Datadog.Trace.ClrProfiler.Managed, Version=1.22.0.0, Culture=neutral, PublicKeyToken=def86d061d0d2eeb");
+                var assembly = Assembly.Load("Datadog.Trace.ClrProfiler.Managed, Version=1.28.1.0, Culture=neutral, PublicKeyToken=def86d061d0d2eeb");
 
                 if (assembly != null)
                 {

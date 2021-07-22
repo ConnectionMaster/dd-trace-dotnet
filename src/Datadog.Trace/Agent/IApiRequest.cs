@@ -1,5 +1,10 @@
+// <copyright file="IApiRequest.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
+using System;
 using System.Threading.Tasks;
-using Datadog.Trace.Agent.MessagePack;
 
 namespace Datadog.Trace.Agent
 {
@@ -7,6 +12,6 @@ namespace Datadog.Trace.Agent
     {
         void AddHeader(string name, string value);
 
-        Task<IApiResponse> PostAsync(Span[][] traces, FormatterResolverWrapper formatterResolver);
+        Task<IApiResponse> PostAsync(ArraySegment<byte> traces);
     }
 }

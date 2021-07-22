@@ -1,3 +1,8 @@
+// <copyright file="RuntimeEventListener.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if NETCOREAPP
 using System;
 using System.Collections.Generic;
@@ -21,7 +26,7 @@ namespace Datadog.Trace.RuntimeMetrics
         private const int EventContentionStop = 91;
         private const int EventGcGlobalHeapHistory = 205;
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<RuntimeEventListener>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<RuntimeEventListener>();
 
         private static readonly string[] GcCountMetricNames = { MetricsNames.Gen0CollectionsCount, MetricsNames.Gen1CollectionsCount, MetricsNames.Gen2CollectionsCount };
         private static readonly string[] CompactingGcTags = { "compacting_gc:true" };
@@ -134,7 +139,7 @@ namespace Datadog.Trace.RuntimeMetrics
             }
             catch (Exception ex)
             {
-                Log.Warning(ex, "Error while processing event {0} {1}", eventData.EventId, eventData.EventName);
+                Log.Warning<int, string>(ex, "Error while processing event {EventId} {EventName}", eventData.EventId, eventData.EventName);
             }
         }
 
@@ -181,7 +186,7 @@ namespace Datadog.Trace.RuntimeMetrics
                 }
                 else
                 {
-                    Log.Debug<object>("EventCounter {0} has no Mean or Increment field", name);
+                    Log.Debug<object>("EventCounter {CounterName} has no Mean or Increment field", name);
                 }
             }
         }

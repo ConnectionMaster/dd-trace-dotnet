@@ -1,10 +1,14 @@
+// <copyright file="DbCommandCache.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.Threading;
 using Datadog.Trace.Logging;
-using Datadog.Trace.Vendors.Serilog;
 
 namespace Datadog.Trace.Util
 {
@@ -12,7 +16,7 @@ namespace Datadog.Trace.Util
     {
         internal const int MaxConnectionStrings = 100;
 
-        private static readonly ILogger Log = DatadogLogging.GetLogger(typeof(DbCommandCache));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(DbCommandCache));
 
         private static ConcurrentDictionary<string, KeyValuePair<string, string>[]> _cache
             = new ConcurrentDictionary<string, KeyValuePair<string, string>[]>();

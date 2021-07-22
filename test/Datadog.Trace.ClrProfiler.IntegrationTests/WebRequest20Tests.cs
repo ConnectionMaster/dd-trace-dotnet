@@ -1,7 +1,11 @@
+// <copyright file="WebRequest20Tests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 #if NET452
 using System.Globalization;
 using System.Linq;
-using Datadog.Core.Tools;
 using Datadog.Trace.ClrProfiler.IntegrationTests.Helpers;
 using Datadog.Trace.TestHelpers;
 using Xunit;
@@ -17,11 +21,15 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             SetServiceVersion("1.0.0");
         }
 
-        [Fact]
+        [Theory]
         [Trait("Category", "EndToEnd")]
         [Trait("RunOnWindows", "True")]
-        public void SubmitsTraces()
+        [InlineData(false)]
+        [InlineData(true)]
+        public void SubmitsTraces(bool enableCallTarget)
         {
+            SetCallTargetSettings(enableCallTarget);
+
             int expectedSpanCount = 25;
             const string expectedOperationName = "http.request";
             const string expectedServiceName = "Samples.WebRequest.NetFramework20-http-client";
@@ -58,11 +66,15 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             }
         }
 
-        [Fact]
+        [Theory]
         [Trait("Category", "EndToEnd")]
         [Trait("RunOnWindows", "True")]
-        public void TracingDisabled_DoesNotSubmitsTraces()
+        [InlineData(false)]
+        [InlineData(true)]
+        public void TracingDisabled_DoesNotSubmitsTraces(bool enableCallTarget)
         {
+            SetCallTargetSettings(enableCallTarget);
+
             const string expectedOperationName = "http.request";
 
             int agentPort = TcpPortProvider.GetOpenPort();

@@ -1,3 +1,8 @@
+// <copyright file="SpanContext.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using Datadog.Trace.ExtensionMethods;
 using Datadog.Trace.Logging;
 using Datadog.Trace.Util;
@@ -9,7 +14,7 @@ namespace Datadog.Trace
     /// </summary>
     public class SpanContext : ISpanContext
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.For<SpanContext>();
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor<SpanContext>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SpanContext"/> class
@@ -52,10 +57,11 @@ namespace Datadog.Trace
         /// <param name="parent">The parent context.</param>
         /// <param name="traceContext">The trace context.</param>
         /// <param name="serviceName">The service name to propagate to child spans.</param>
-        internal SpanContext(ISpanContext parent, ITraceContext traceContext, string serviceName)
+        /// <param name="spanId">The propagated span id.</param>
+        internal SpanContext(ISpanContext parent, ITraceContext traceContext, string serviceName, ulong? spanId = null)
             : this(parent?.TraceId, serviceName)
         {
-            SpanId = SpanIdGenerator.ThreadInstance.CreateNew();
+            SpanId = spanId ?? SpanIdGenerator.ThreadInstance.CreateNew();
             Parent = parent;
             TraceContext = traceContext;
             if (parent is SpanContext spanContext)
@@ -99,9 +105,9 @@ namespace Datadog.Trace
         public string ServiceName { get; set; }
 
         /// <summary>
-        /// Gets the origin of the trace
+        /// Gets or sets the origin of the trace
         /// </summary>
-        internal string Origin { get; }
+        internal string Origin { get; set; }
 
         /// <summary>
         /// Gets the trace context.

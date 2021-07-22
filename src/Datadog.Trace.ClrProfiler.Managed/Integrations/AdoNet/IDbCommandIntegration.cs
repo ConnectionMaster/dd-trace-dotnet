@@ -1,3 +1,8 @@
+// <copyright file="IDbCommandIntegration.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using System.Data;
 using Datadog.Trace.ClrProfiler.Emit;
@@ -18,7 +23,7 @@ namespace Datadog.Trace.ClrProfiler.Integrations.AdoNet
         // ReSharper disable once InconsistentNaming
         private const string IDbCommandTypeName = AdoNetConstants.TypeNames.IDbCommand;
 
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(IDbCommandIntegration));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(IDbCommandIntegration));
 
         /// <summary>
         /// Instrumentation wrapper for <see cref="IDbCommand.ExecuteReader()"/>.

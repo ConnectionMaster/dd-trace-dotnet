@@ -1,3 +1,8 @@
+// <copyright file="ScopeManagerBase.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System;
 using Datadog.Trace.Logging;
 
@@ -5,7 +10,9 @@ namespace Datadog.Trace
 {
     internal abstract class ScopeManagerBase : IScopeManager, IScopeRawAccess
     {
-        private static readonly Vendors.Serilog.ILogger Log = DatadogLogging.GetLogger(typeof(ScopeManagerBase));
+        private static readonly IDatadogLogger Log = DatadogLogging.GetLoggerFor(typeof(ScopeManagerBase));
+
+        public event EventHandler<SpanEventArgs> TraceStarted;
 
         public event EventHandler<SpanEventArgs> SpanOpened;
 
@@ -30,6 +37,11 @@ namespace Datadog.Trace
             var newParent = Active;
             var scope = new Scope(newParent, span, this, finishOnClose);
             var scopeOpenedArgs = new SpanEventArgs(span);
+
+            if (newParent == null)
+            {
+                TraceStarted?.Invoke(this, scopeOpenedArgs);
+            }
 
             SpanOpened?.Invoke(this, scopeOpenedArgs);
 

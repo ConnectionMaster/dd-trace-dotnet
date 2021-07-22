@@ -1,8 +1,10 @@
-using System.Collections.Specialized;
+// <copyright file="WebRequestTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System.Globalization;
 using System.Linq;
-using System.Net;
-using Datadog.Core.Tools;
 using Datadog.Trace.ClrProfiler.IntegrationTests.Helpers;
 using Datadog.Trace.TestHelpers;
 using Xunit;
@@ -10,6 +12,8 @@ using Xunit.Abstractions;
 
 namespace Datadog.Trace.ClrProfiler.IntegrationTests
 {
+    [CollectionDefinition(nameof(WebRequestTests), DisableParallelization = true)]
+    [Collection(nameof(WebRequestTests))]
     public class WebRequestTests : TestHelper
     {
         public WebRequestTests(ITestOutputHelper output)
@@ -18,12 +22,19 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             SetServiceVersion("1.0.0");
         }
 
-        [Fact]
+        [Theory]
         [Trait("Category", "EndToEnd")]
         [Trait("RunOnWindows", "True")]
-        public void SubmitsTraces()
+        [InlineData(false)]
+        [InlineData(true)]
+        public void SubmitsTraces(bool enableCallTarget)
         {
-            int expectedSpanCount = EnvironmentHelper.IsCoreClr() ? 70 : 26; // .NET Framework automatic instrumentation doesn't cover Async / TaskAsync operations
+            SetCallTargetSettings(enableCallTarget);
+
+            int expectedSpanCount = EnvironmentHelper.IsCoreClr() ? 71 : 27; // .NET Framework automatic instrumentation doesn't cover Async / TaskAsync operations
+
+            var ignoreAsync = EnvironmentHelper.IsCoreClr() ? string.Empty : "IgnoreAsync ";
+
             const string expectedOperationName = "http.request";
             const string expectedServiceName = "Samples.WebRequest-http-client";
 
@@ -34,7 +45,7 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             Output.WriteLine($"Assigning port {httpPort} for the httpPort.");
 
             using (var agent = new MockTracerAgent(agentPort))
-            using (ProcessResult processResult = RunSampleAndWaitForExit(agent.Port, arguments: $"Port={httpPort}"))
+            using (ProcessResult processResult = RunSampleAndWaitForExit(agent.Port, arguments: $"{ignoreAsync}Port={httpPort}"))
             {
                 Assert.True(processResult.ExitCode >= 0, $"Process exited with code {processResult.ExitCode}");
 
@@ -59,11 +70,15 @@ namespace Datadog.Trace.ClrProfiler.IntegrationTests
             }
         }
 
-        [Fact]
+        [Theory]
         [Trait("Category", "EndToEnd")]
         [Trait("RunOnWindows", "True")]
-        public void TracingDisabled_DoesNotSubmitsTraces()
+        [InlineData(false)]
+        [InlineData(true)]
+        public void TracingDisabled_DoesNotSubmitsTraces(bool enableCallTarget)
         {
+            SetCallTargetSettings(enableCallTarget);
+
             const string expectedOperationName = "http.request";
 
             int agentPort = TcpPortProvider.GetOpenPort();

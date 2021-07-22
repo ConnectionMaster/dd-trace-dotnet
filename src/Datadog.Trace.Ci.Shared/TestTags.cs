@@ -1,3 +1,8 @@
+// <copyright file="TestTags.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 namespace Datadog.Trace.Ci
 {
     /// <summary>
@@ -8,16 +13,19 @@ namespace Datadog.Trace.Ci
         /// <summary>
         /// Test suite name
         /// </summary>
+        [FeatureTracking]
         public const string Suite = "test.suite";
 
         /// <summary>
         /// Test name
         /// </summary>
+        [FeatureTracking]
         public const string Name = "test.name";
 
         /// <summary>
         /// Test type
         /// </summary>
+        [FeatureTracking]
         public const string Type = "test.type";
 
         /// <summary>
@@ -33,21 +41,25 @@ namespace Datadog.Trace.Ci
         /// <summary>
         /// Test framework
         /// </summary>
+        [FeatureTracking]
         public const string Framework = "test.framework";
 
         /// <summary>
         /// Test parameters
         /// </summary>
-        public const string Arguments = "test.arguments";
+        [FeatureTracking]
+        public const string Parameters = "test.parameters";
 
         /// <summary>
         /// Test traits
         /// </summary>
+        [FeatureTracking]
         public const string Traits = "test.traits";
 
         /// <summary>
         /// Test status
         /// </summary>
+        [FeatureTracking]
         public const string Status = "test.status";
 
         /// <summary>
@@ -68,6 +80,23 @@ namespace Datadog.Trace.Ci
         /// <summary>
         /// Test skip reason
         /// </summary>
+        [FeatureTracking]
         public const string SkipReason = "test.skip_reason";
+
+        /// <summary>
+        /// Test output message
+        /// </summary>
+        [FeatureTracking]
+        public const string Message = "test.message";
+
+        /// <summary>
+        /// Parameters metadata TestName
+        /// </summary>
+        public const string MetadataTestName = "test_name";
+
+        /// <summary>
+        /// Origin value for CIApp Test
+        /// </summary>
+        public const string CIAppTestOriginName = "ciapp-test";
     }
 }

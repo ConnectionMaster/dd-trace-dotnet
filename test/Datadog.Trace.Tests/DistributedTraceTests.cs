@@ -1,3 +1,8 @@
+// <copyright file="DistributedTraceTests.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using Xunit;
 
 namespace Datadog.Trace.Tests
@@ -27,8 +32,9 @@ namespace Datadog.Trace.Tests
             }
 
             var distributedTraceContext = new SpanContext(traceId, parentSpanId);
+            var secondTracer = new Tracer();
 
-            using (var scope = Tracer.Instance.StartActive("manual.trace", parent: distributedTraceContext))
+            using (var scope = secondTracer.StartActive("manual.trace", parent: distributedTraceContext))
             {
                 scope.Span.SetTag(Tags.SamplingPriority, samplingPriorityText);
                 Assert.True(scope.Span.TraceId == traceId, "Trace ID must match the parent trace.");

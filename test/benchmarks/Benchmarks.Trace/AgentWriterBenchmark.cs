@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Datadog.Trace;
 using Datadog.Trace.Agent;
-using Datadog.Trace.Agent.MessagePack;
 using Datadog.Trace.Agent.Transports;
 using Datadog.Trace.BenchmarkDotNet;
 using Datadog.Trace.Configuration;
@@ -18,9 +17,7 @@ namespace Benchmarks.Trace
         private const int SpanCount = 1000;
 
         private static readonly IAgentWriter AgentWriter;
-        private static readonly Span[] Spans;
-        private static readonly Span[] EnrichedSpans;
-
+        private static readonly ArraySegment<Span> EnrichedSpans;
         static AgentWriterBenchmark()
         {
             var settings = TracerSettings.FromDefaultSources();
@@ -30,33 +27,22 @@ namespace Benchmarks.Trace
 
             var api = new Api(settings.AgentUri, new FakeApiRequestFactory(), statsd: null);
 
-            AgentWriter = new AgentWriter(api, statsd: null, automaticFlush: false, queueSize: SpanCount * 2);
+            AgentWriter = new AgentWriter(api, statsd: null, automaticFlush: false);
 
-            Spans = new Span[SpanCount];
-            EnrichedSpans = new Span[SpanCount];
+            var enrichedSpans = new Span[SpanCount];
             var now = DateTimeOffset.UtcNow;
 
             for (int i = 0; i < SpanCount; i++)
             {
-                Spans[i] = new Span(new SpanContext((ulong)i, (ulong)i, SamplingPriority.UserReject, "Benchmark", null), now);
-                EnrichedSpans[i] = new Span(new SpanContext((ulong)i, (ulong)i, SamplingPriority.UserReject, "Benchmark", null), now);
-                EnrichedSpans[i].SetTag(Tags.Env, "Benchmark");
-                EnrichedSpans[i].SetMetric(Metrics.SamplingRuleDecision, 1.0);
+                enrichedSpans[i] = new Span(new SpanContext((ulong)i, (ulong)i, SamplingPriority.UserReject, "Benchmark", null), now);
+                enrichedSpans[i].SetTag(Tags.Env, "Benchmark");
+                enrichedSpans[i].SetMetric(Metrics.SamplingRuleDecision, 1.0);
             }
 
-            // Run benchmarks once to reduce noise
-            new AgentWriterBenchmark().WriteAndFlushTraces().GetAwaiter().GetResult();
-            new AgentWriterBenchmark().WriteAndFlushEnrichedTraces().GetAwaiter().GetResult();
-        }
+            EnrichedSpans = new ArraySegment<Span>(enrichedSpans);
 
-        /// <summary>
-        /// Write traces to the agent and flushes them
-        /// </summary>
-        [Benchmark]
-        public Task WriteAndFlushTraces()
-        {
-            AgentWriter.WriteTrace(Spans);
-            return AgentWriter.FlushTracesAsync();
+            // Run benchmarks once to reduce noise
+            new AgentWriterBenchmark().WriteAndFlushEnrichedTraces().GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -104,11 +90,11 @@ namespace Benchmarks.Trace
                 _realRequest.AddHeader(name, value);
             }
 
-            public async Task<IApiResponse> PostAsync(Span[][] traces, FormatterResolverWrapper formatterResolver)
+            public async Task<IApiResponse> PostAsync(ArraySegment<byte> traces)
             {
                 using (var requestStream = Stream.Null)
                 {
-                    await CachedSerializer.Instance.SerializeAsync(requestStream, traces, formatterResolver).ConfigureAwait(false);
+                    await requestStream.WriteAsync(traces.Array, traces.Offset, traces.Count).ConfigureAwait(false);
                 }
 
                 return new FakeApiResponse();
@@ -120,6 +106,11 @@ namespace Benchmarks.Trace
             public int StatusCode => 200;
 
             public long ContentLength => 0;
+
+            public string GetHeader(string headerName)
+            {
+                throw new NotImplementedException();
+            }
 
             public Task<string> ReadAsStringAsync()
             {

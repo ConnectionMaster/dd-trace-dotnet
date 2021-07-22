@@ -1,4 +1,10 @@
+// <copyright file="TagsList.cs" company="Datadog">
+// Unless explicitly stated otherwise all files in this repository are licensed under the Apache 2 License.
+// This product includes software developed at Datadog (https://www.datadoghq.com/). Copyright 2017 Datadog, Inc.
+// </copyright>
+
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using Datadog.Trace.Util;
@@ -8,6 +14,12 @@ namespace Datadog.Trace.Tagging
 {
     internal abstract class TagsList : ITags
     {
+        private static byte[] _metaBytes = StringEncoding.UTF8.GetBytes("meta");
+        private static byte[] _metricsBytes = StringEncoding.UTF8.GetBytes("metrics");
+        private static byte[] _originBytes = StringEncoding.UTF8.GetBytes(Trace.Tags.Origin);
+        private static byte[] _runtimeIdBytes = StringEncoding.UTF8.GetBytes(Trace.Tags.RuntimeId);
+        private static byte[] _runtimeIdValueBytes = StringEncoding.UTF8.GetBytes(Tracer.RuntimeId);
+
         private List<KeyValuePair<string, double>> _metrics;
         private List<KeyValuePair<string, string>> _tags;
 
@@ -169,12 +181,12 @@ namespace Datadog.Trace.Tagging
             }
         }
 
-        public int SerializeTo(ref byte[] bytes, int offset)
+        public int SerializeTo(ref byte[] bytes, int offset, Span span)
         {
             int originalOffset = offset;
 
-            offset += WriteTags(ref bytes, offset);
-            offset += WriteMetrics(ref bytes, offset);
+            offset += WriteTags(ref bytes, offset, span);
+            offset += WriteMetrics(ref bytes, offset, span);
 
             return offset - originalOffset;
         }
@@ -236,24 +248,35 @@ namespace Datadog.Trace.Tagging
 
         protected virtual IProperty<double?>[] GetAdditionalMetrics() => ArrayHelper.Empty<IProperty<double?>>();
 
-        private int WriteTags(ref byte[] bytes, int offset)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void WriteTag(ref byte[] bytes, ref int offset, string key, string value)
+        {
+            offset += MessagePackBinary.WriteString(ref bytes, offset, key);
+            offset += MessagePackBinary.WriteString(ref bytes, offset, value);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void WriteMetric(ref byte[] bytes, ref int offset, string key, double value)
+        {
+            offset += MessagePackBinary.WriteString(ref bytes, offset, key);
+            offset += MessagePackBinary.WriteDouble(ref bytes, offset, value);
+        }
+
+        private int WriteTags(ref byte[] bytes, int offset, Span span)
         {
             int originalOffset = offset;
 
-            offset += MessagePackBinary.WriteString(ref bytes, offset, "meta");
+            offset += MessagePackBinary.WriteStringBytes(ref bytes, offset, _metaBytes);
 
             int count = 0;
 
-            var tags = Tags;
-            var additionalTags = GetAdditionalTags();
+            // We don't know the final count yet, write a fixed-size header and note the offset
+            var countOffset = offset;
+            offset += MessagePackBinary.WriteMapHeaderForceMap32Block(ref bytes, offset, 0);
 
-            foreach (var property in additionalTags)
-            {
-                if (property.Getter(this) != null)
-                {
-                    count++;
-                }
-            }
+            var tags = Tags;
+
+            bool isOriginWritten = false;
 
             if (tags != null)
             {
@@ -261,52 +284,66 @@ namespace Datadog.Trace.Tagging
                 {
                     count += tags.Count;
 
-                    offset += MessagePackBinary.WriteMapHeader(ref bytes, offset, count);
-
                     foreach (var pair in tags)
                     {
-                        offset += MessagePackBinary.WriteString(ref bytes, offset, pair.Key);
-                        offset += MessagePackBinary.WriteString(ref bytes, offset, pair.Value);
+                        WriteTag(ref bytes, ref offset, pair.Key, pair.Value);
                     }
                 }
             }
-            else
-            {
-                offset += MessagePackBinary.WriteMapHeader(ref bytes, offset, count);
-            }
 
-            foreach (var property in additionalTags)
+            foreach (var property in GetAdditionalTags())
             {
                 var value = property.Getter(this);
 
                 if (value != null)
                 {
-                    offset += MessagePackBinary.WriteString(ref bytes, offset, property.Key);
-                    offset += MessagePackBinary.WriteString(ref bytes, offset, value);
+                    if (property.Key == Trace.Tags.Origin)
+                    {
+                        isOriginWritten = true;
+                    }
+
+                    count++;
+                    WriteTag(ref bytes, ref offset, property.Key, value);
                 }
+            }
+
+            if (span.IsTopLevel)
+            {
+                count++;
+                offset += MessagePackBinary.WriteStringBytes(ref bytes, offset, _runtimeIdBytes);
+                offset += MessagePackBinary.WriteStringBytes(ref bytes, offset, _runtimeIdValueBytes);
+            }
+
+            string origin = span.Context.Origin;
+            if (!isOriginWritten && !string.IsNullOrEmpty(origin))
+            {
+                count++;
+                offset += MessagePackBinary.WriteStringBytes(ref bytes, offset, _originBytes);
+                offset += MessagePackBinary.WriteString(ref bytes, offset, origin);
+            }
+
+            if (count > 0)
+            {
+                // Back-patch the count
+                MessagePackBinary.WriteMapHeaderForceMap32Block(ref bytes, countOffset, (uint)count);
             }
 
             return offset - originalOffset;
         }
 
-        private int WriteMetrics(ref byte[] bytes, int offset)
+        private int WriteMetrics(ref byte[] bytes, int offset, Span span)
         {
             int originalOffset = offset;
 
-            offset += MessagePackBinary.WriteString(ref bytes, offset, "metrics");
+            offset += MessagePackBinary.WriteStringBytes(ref bytes, offset, _metricsBytes);
 
             int count = 0;
 
-            var metrics = Metrics;
-            var additionalMetrics = GetAdditionalMetrics();
+            // We don't know the final count yet, write a fixed-size header and note the offset
+            var countOffset = offset;
+            offset += MessagePackBinary.WriteMapHeaderForceMap32Block(ref bytes, offset, 0);
 
-            foreach (var property in additionalMetrics)
-            {
-                if (property.Getter(this) != null)
-                {
-                    count++;
-                }
-            }
+            var metrics = Metrics;
 
             if (metrics != null)
             {
@@ -314,18 +351,11 @@ namespace Datadog.Trace.Tagging
                 {
                     count += metrics.Count;
 
-                    offset += MessagePackBinary.WriteMapHeader(ref bytes, offset, count);
-
                     foreach (var pair in metrics)
                     {
-                        offset += MessagePackBinary.WriteString(ref bytes, offset, pair.Key);
-                        offset += MessagePackBinary.WriteDouble(ref bytes, offset, pair.Value);
+                        WriteMetric(ref bytes, ref offset, pair.Key, pair.Value);
                     }
                 }
-            }
-            else
-            {
-                offset += MessagePackBinary.WriteMapHeader(ref bytes, offset, count);
             }
 
             foreach (var property in GetAdditionalMetrics())
@@ -334,9 +364,21 @@ namespace Datadog.Trace.Tagging
 
                 if (value != null)
                 {
-                    offset += MessagePackBinary.WriteString(ref bytes, offset, property.Key);
-                    offset += MessagePackBinary.WriteDouble(ref bytes, offset, value.Value);
+                    count++;
+                    WriteMetric(ref bytes, ref offset, property.Key, value.Value);
                 }
+            }
+
+            if (span.IsTopLevel)
+            {
+                count++;
+                WriteMetric(ref bytes, ref offset, Trace.Metrics.TopLevelSpan, 1.0);
+            }
+
+            if (count > 0)
+            {
+                // Back-patch the count
+                MessagePackBinary.WriteMapHeaderForceMap32Block(ref bytes, countOffset, (uint)count);
             }
 
             return offset - originalOffset;
