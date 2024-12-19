@@ -63,7 +63,7 @@ partial class Build
 
     AbsolutePath NativeBuildDirectory => RootDirectory / "obj";
 
-    const string LibDdwafVersion = "1.21.0";
+    const string LibDdwafVersion = "1.22.0";
 
     string[] OlderLibDdwafVersions = { "1.3.0", "1.10.0", "1.14.0", "1.16.0" };
 
@@ -2437,8 +2437,8 @@ partial class Build
             Logger.Information("File ordered and saved: {File}", csvFilePath);
         });
 
-    Target CreateRootDescriptorsFile => _ => _
-       .Description("Create RootDescriptors.xml file")
+    Target CreateTrimmingFile => _ => _
+       .Description("Create Datadog.Trace.Trimming.xml file")
        .DependsOn(CompileManagedSrc)
        .Executes(() =>
         {

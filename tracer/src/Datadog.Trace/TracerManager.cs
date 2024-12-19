@@ -53,7 +53,7 @@ namespace Datadog.Trace
         private volatile bool _isClosing = false;
 
         public TracerManager(
-            ImmutableTracerSettings settings,
+            TracerSettings settings,
             IAgentWriter agentWriter,
             IScopeManager scopeManager,
             IDogStatsd statsd,
@@ -128,7 +128,7 @@ namespace Datadog.Trace
         /// <summary>
         /// Gets this tracer's settings.
         /// </summary>
-        public ImmutableTracerSettings Settings { get; }
+        public TracerSettings Settings { get; }
 
         public IAgentWriter AgentWriter { get; }
 
@@ -170,7 +170,7 @@ namespace Datadog.Trace
         /// </summary>
         /// <param name="settings">The settings to use </param>
         /// <param name="factory">The factory to use to create the <see cref="TracerManager"/></param>
-        public static void ReplaceGlobalManager(ImmutableTracerSettings settings, TracerManagerFactory factory)
+        public static void ReplaceGlobalManager(TracerSettings settings, TracerManagerFactory factory)
         {
             TracerManager oldManager;
             TracerManager newManager;
@@ -528,6 +528,9 @@ namespace Datadog.Trace
                     writer.WritePropertyName("data_streams_enabled");
                     writer.WriteValue(instanceSettings.IsDataStreamsMonitoringEnabled);
 
+                    writer.WritePropertyName("data_streams_legacy_headers_enabled");
+                    writer.WriteValue(instanceSettings.IsDataStreamsLegacyHeadersEnabled);
+
                     writer.WritePropertyName("span_sampling_rules");
                     writer.WriteValue(instanceSettings.SpanSamplingRules);
 
@@ -634,7 +637,7 @@ namespace Datadog.Trace
         }
 
         // should only be called inside a global lock, i.e. by TracerManager.Instance or ReplaceGlobalManager
-        private static TracerManager CreateInitializedTracer(ImmutableTracerSettings settings, TracerManagerFactory factory)
+        private static TracerManager CreateInitializedTracer(TracerSettings settings, TracerManagerFactory factory)
         {
             if (_instance is ILockedTracer)
             {
