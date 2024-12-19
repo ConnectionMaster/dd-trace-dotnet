@@ -171,7 +171,7 @@ variables:
   DD_COLLECTOR_CPU_USAGE: true
   # If we're doing an SSI run, set the indicator, the rest need to be set in the stage
   IS_SSI_RUN: $[ or(eq(variables['Build.CronSchedule.DisplayName'], 'Daily SSI Run'), eq(variables['force_ssi_run'], 'true')) ]
-  ToolVersion: 3.7.0
+  ToolVersion: 3.8.0
 
 # Declare the datadog agent as a resource to be used as a pipeline service
 resources:
@@ -1006,8 +1006,8 @@ stages:
         targetBranch: $(targetBranch)
     - template: steps/install-latest-dotnet-sdk.yml
 
-    # The CreateRootDescriptorsFile tasks expects the native loader but we build that in the other stage
-    - script: ./tracer/build.sh BuildManagedTracerHome BuildNativeLoader --skip CreateRootDescriptorsFile
+    # The CreateTrimmingFile tasks expects the native loader but we build that in the other stage
+    - script: ./tracer/build.sh BuildManagedTracerHome BuildNativeLoader --skip CreateTrimmingFile
       displayName: Build managed tracer + native loader
       retryCountOnTaskFailure: 1
 
