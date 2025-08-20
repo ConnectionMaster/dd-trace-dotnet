@@ -12,19 +12,19 @@
 
   <ItemGroup Condition="'$(TargetFramework)' == 'netcoreapp3.1'">
     <PackageReference Include="System.Text.Json">
-      <Version>7.0.2</Version>
+      <Version>8.0.5</Version>
     </PackageReference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net6.0'">
     <PackageReference Include="System.Text.Json">
-      <Version>7.0.2</Version>
+      <Version>8.0.5</Version>
     </PackageReference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net7.0'">
     <PackageReference Include="System.Text.Json">
-      <Version>7.0.2</Version>
+      <Version>8.0.5</Version>
     </PackageReference>
   </ItemGroup>
 
