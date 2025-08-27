@@ -24,7 +24,7 @@
     <DDPlatform Condition=" '$(Platform)' != '' AND $([MSBuild]::IsOSPlatform('Linux')) ">linux-$(Platform)</DDPlatform>
     <DDPlatform Condition=" '$(Platform)' == '' AND $([MSBuild]::IsOSPlatform('Linux')) ">linux-unknown</DDPlatform>
 
-    <DeployDirectoryBase >$(TopLevelDeployDirectoryBase)\$(DDPlatform)</DeployDirectoryBase>
+    <DeployDirectoryBase>$(TopLevelDeployDirectoryBase)\$(DDPlatform)</DeployDirectoryBase>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -39,8 +39,8 @@
       <VcpkgPDBs Condition="'$(Configuration)'=='Release'" Include="$(VcpkgInstalledDir)\$(VcpkgTriplet)\bin\*.pdb" />
       <VcpkgPDBs Condition="'$(Configuration)'=='Debug'" Include="$(VcpkgInstalledDir)\$(VcpkgTriplet)\debug\bin\*.pdb" />
     </ItemGroup>
-    <Copy SourceFiles="@(VcpkgPDBs)" DestinationFiles="@(VcpkgPDBs->'$(DeployDirectoryBase)\%(RecursiveDir)%(Filename)%(Extension)')" />
-    <Copy SourceFiles="@(VcpkgPDBs)" DestinationFiles="@(VcpkgPDBs->'$(NativeWindowsDeployFilesSrcDir)\%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(VcpkgPDBs)" DestinationFiles="@(VcpkgPDBs-&gt;'$(DeployDirectoryBase)\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(VcpkgPDBs)" DestinationFiles="@(VcpkgPDBs-&gt;'$(NativeWindowsDeployFilesSrcDir)\%(Filename)%(Extension)')" />
   </Target>
   <Target Name="CleanVcpkPDBs" AfterTargets="Clean">
     <ItemGroup>
