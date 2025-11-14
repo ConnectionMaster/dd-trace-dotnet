@@ -11,6 +11,7 @@
     <!-- Integration: Grpc.Net.Client -->
     <!--    Assembly: Grpc.Net.Client -->
     <!-- Latest package https://www.nuget.org/packages/Grpc.AspNetCore/2.71.0 -->
+  <PackageReference Include="Google.Protobuf" Version="3.33.1" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" />
   </ItemGroup>
 
