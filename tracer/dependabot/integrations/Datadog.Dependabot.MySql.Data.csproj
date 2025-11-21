@@ -9,6 +9,7 @@
     <!-- Integration: MySql.Data -->
     <!--    Assembly: MySql.Data -->
     <!-- Latest package https://www.nuget.org/packages/MySql.Data/9.5.0 -->
+  <PackageReference Include="Google.Protobuf" Version="3.33.1" />
     <PackageReference Include="MySql.Data" Version="9.5.0" />
   </ItemGroup>
 
