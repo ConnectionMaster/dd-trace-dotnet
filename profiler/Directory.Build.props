@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+﻿
 
 <!-- This Directory.Build.props file needs to apply to all projects and solutions in this repository. It is placed near the top of the repo accordingly.    -->
 <!-- If you use more specific Directory.Build.props files, you need to reference this file from there. You can do it with a statement such as this:         -->
@@ -208,38 +208,28 @@
         <RdrctOutptMsgPrefix>Set Output Dirs</RdrctOutptMsgPrefix>
     </PropertyGroup>
 
-    <Target Name="PrintOutputDirectories"  BeforeTargets="Build" KeepDuplicateOutputs="True">
+    <Target Name="PrintOutputDirectories" BeforeTargets="Build" KeepDuplicateOutputs="True">
         <!-- This target will run before the build, but after the redefinitions in this file took place.                                                    -->
         <!-- It can be used to view the details of the redefinitions.                                                                                       -->
-        <Message Condition=" '$(AvoidRedirectingBinaryOutput)' != 'True' "
-                 Text="[$(RdrctOutptMsgPrefix)] Binary output directories were redirected. Project: &quot;$(MSBuildProjectName)&quot; (Configuration=&quot;$(Configuration)&quot;, TargetFramework=&quot;$(TargetFramework)&quot;, Platform=&quot;$(Platform)&quot;)."
-                 Importance="high" />
+        <Message Condition=" '$(AvoidRedirectingBinaryOutput)' != 'True' " Text="[$(RdrctOutptMsgPrefix)] Binary output directories were redirected. Project: &quot;$(MSBuildProjectName)&quot; (Configuration=&quot;$(Configuration)&quot;, TargetFramework=&quot;$(TargetFramework)&quot;, Platform=&quot;$(Platform)&quot;)." Importance="high" />
 
-        <Message Condition=" '$(AvoidRedirectingBinaryOutput)' == 'True' "
-                 Text="[$(RdrctOutptMsgPrefix)] Binary output directories were NOT redirected, because &quot;AvoidRedirectingBinaryOutput&quot; is set. Project &quot;$(MSBuildProjectName)&quot; (Configuration=&quot;$(Configuration)&quot;, TargetFramework=&quot;$(TargetFramework)&quot;, Platform=&quot;$(Platform)&quot;)."
-                 Importance="high" />
+        <Message Condition=" '$(AvoidRedirectingBinaryOutput)' == 'True' " Text="[$(RdrctOutptMsgPrefix)] Binary output directories were NOT redirected, because &quot;AvoidRedirectingBinaryOutput&quot; is set. Project &quot;$(MSBuildProjectName)&quot; (Configuration=&quot;$(Configuration)&quot;, TargetFramework=&quot;$(TargetFramework)&quot;, Platform=&quot;$(Platform)&quot;)." Importance="high" />
 
-        <Message Condition=" '$(PrintDetailedOutputRedirectionInfo)' != 'True' "
-                 Text="[$(RdrctOutptMsgPrefix)] For details, set the &quot;PrintDetailedOutputRedirectionInfo&quot; property in the Set-Output-Dirs PROPS file (&quot;$(MSBuildThisFile)&quot;) to TRUE."
-                 Importance="high" />
+        <Message Condition=" '$(PrintDetailedOutputRedirectionInfo)' != 'True' " Text="[$(RdrctOutptMsgPrefix)] For details, set the &quot;PrintDetailedOutputRedirectionInfo&quot; property in the Set-Output-Dirs PROPS file (&quot;$(MSBuildThisFile)&quot;) to TRUE." Importance="high" />
 
-        <Message Condition=" '$(PrintDetailedOutputRedirectionInfo)' == 'True' "
-                 Text="[$(RdrctOutptMsgPrefix)] Details are printed below; set the &quot;PrintDetailedOutputRedirectionInfo&quot; property in the listed Set-Output-Dirs PROPS file to FALSE to suppress the detailed output."
-                 Importance="high" />
+        <Message Condition=" '$(PrintDetailedOutputRedirectionInfo)' == 'True' " Text="[$(RdrctOutptMsgPrefix)] Details are printed below; set the &quot;PrintDetailedOutputRedirectionInfo&quot; property in the listed Set-Output-Dirs PROPS file to FALSE to suppress the detailed output." Importance="high" />
 
-        <Message Condition=" '$(PrintDetailedOutputRedirectionInfo)' != 'True' "
-                 Text=" "
-                 Importance="high" />
+        <Message Condition=" '$(PrintDetailedOutputRedirectionInfo)' != 'True' " Text=" " Importance="high" />
 
     </Target>
 
-    <Target Name="PrintOutputDirectoriesDetails"  AfterTargets="PrintOutputDirectories" KeepDuplicateOutputs="True" Condition=" '$(PrintDetailedOutputRedirectionInfo)' == 'True' ">
+    <Target Name="PrintOutputDirectoriesDetails" AfterTargets="PrintOutputDirectories" KeepDuplicateOutputs="True" Condition=" '$(PrintDetailedOutputRedirectionInfo)' == 'True' ">
 
         <!-- This target will run before the build, but after the redefinitions in this file took place.                                                    -->
         <!-- It can be used to view the details of the redefinitions.                                                                                       -->
-        <Message Text="[$(RdrctOutptMsgPrefix)]     Project file:                    &quot;$(MSBuildProjectFullPath)&quot;." Importance="high"/>
-        <Message Text="[$(RdrctOutptMsgPrefix)]     MSBuildProjectExtension:         &quot;$(MSBuildProjectExtension)&quot;." Importance="high"/>
-        <Message Text="[$(RdrctOutptMsgPrefix)]     Set-Output-Dirs PROPS file:      &quot;$(MSBuildThisFileFullPath)&quot;." Importance="high"/>
+        <Message Text="[$(RdrctOutptMsgPrefix)]     Project file:                    &quot;$(MSBuildProjectFullPath)&quot;." Importance="high" />
+        <Message Text="[$(RdrctOutptMsgPrefix)]     MSBuildProjectExtension:         &quot;$(MSBuildProjectExtension)&quot;." Importance="high" />
+        <Message Text="[$(RdrctOutptMsgPrefix)]     Set-Output-Dirs PROPS file:      &quot;$(MSBuildThisFileFullPath)&quot;." Importance="high" />
 
         <Message Text="[$(RdrctOutptMsgPrefix)]     AvoidRedirectingBinaryOutput:    &quot;$(AvoidRedirectingBinaryOutput)&quot;." Importance="high" />
         <Message Text="[$(RdrctOutptMsgPrefix)]     ForceBinaryOutputIntoEnlistment: &quot;$(ForceBinaryOutputIntoEnlistment)&quot;." Importance="high" />
